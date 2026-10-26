@@ -1,0 +1,1047 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galaxy Bible</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<meta name="description" content="A 3D galaxy of the Treasury of Scripture Knowledge cross references: how every part of the Bible connects.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #03040a;
+    --panel: rgba(12, 14, 26, 0.74);
+    --border: rgba(255, 255, 255, 0.10);
+    --text: #e9e6dc;
+    --muted: #9a9aa8;
+    --accent: #f2d48a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 14px/1.45 Inter, system-ui, sans-serif; }
+  #graph { position: fixed; inset: 0; }
+  .ui { transition: opacity .4s; }
+  body.hide-ui .ui { opacity: 0; pointer-events: none; }
+
+  #title { position: fixed; top: 20px; left: 24px; pointer-events: none; }
+  #title h1 { margin: 0; font: 600 34px/1.1 "Cormorant Garamond", Georgia, serif; letter-spacing: .02em; color: #fff;
+    text-shadow: 0 0 24px rgba(242, 212, 138, .35); }
+  #title p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+
+  #panelToggle { position: fixed; top: 20px; right: 20px; z-index: 2; width: 36px; height: 36px; border-radius: 9px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 18px; line-height: 1;
+    cursor: pointer; backdrop-filter: blur(8px); }
+  #panelToggle:hover { color: var(--accent); }
+  #controls { position: fixed; top: 64px; right: 20px; width: 270px; max-height: calc(100vh - 84px); overflow: auto;
+    padding: 6px 14px 14px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(8px); }
+  body.panel-hidden #controls { display: none; }
+  details { border-top: 1px solid var(--border); padding: 8px 0 2px; }
+  details:first-of-type { border-top: 0; }
+  summary { cursor: pointer; color: var(--text); font-weight: 500; font-size: 13px; list-style: none; display: flex;
+    justify-content: space-between; }
+  summary::after { content: "+"; color: var(--muted); }
+  details[open] summary::after { content: "–"; }
+  .ctl { margin: 8px 0; }
+  .ctl label { display: flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+  .ctl label b { color: var(--text); font-weight: 500; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  .num { color: var(--text); font-weight: 500; }
+  .num input { width: 52px; padding: 1px 4px; margin-right: 2px; text-align: right; border-radius: 5px;
+    border: 1px solid var(--border); background: rgba(255,255,255,.05); color: var(--text); font: inherit; }
+  .num input:focus { outline: none; border-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; margin: 8px 0; cursor: pointer; }
+  .check input { accent-color: var(--accent); }
+  input[type=search] { width: 100%; padding: 7px 10px; border-radius: 7px; border: 1px solid var(--border);
+    background: rgba(255,255,255,.05); color: var(--text); font: inherit; margin: 8px 0 4px; }
+  .row { display: flex; gap: 8px; margin-top: 8px; }
+  .row button { flex: 1; padding: 7px; border-radius: 7px; border: 1px solid var(--border); background: rgba(255,255,255,.05);
+    color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+  .row button:hover { color: var(--accent); }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 10px; }
+
+  #info { position: fixed; left: 24px; bottom: 24px; width: 300px; max-height: 50vh; overflow: auto; padding: 14px 16px;
+    border-radius: 12px; background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(8px); display: none; }
+  #info h2 { margin: 0 0 2px; font: 600 24px "Cormorant Garamond", Georgia, serif; }
+  #info .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  #info ol { margin: 0; padding-left: 22px; }
+  #info li { cursor: pointer; padding: 1px 0; }
+  #info li:hover { color: var(--accent); }
+  #info li span { color: var(--muted); font-size: 12px; }
+
+  #legend { position: fixed; left: 24px; top: 96px; padding: 10px 12px; border-radius: 10px; background: var(--panel);
+    border: 1px solid var(--border); font-size: 12px; display: grid; grid-template-columns: 10px auto; gap: 3px 8px;
+    align-items: center; }
+  #legend i { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 6px currentColor; }
+  #legend .x { position: absolute; top: 2px; right: 4px; border: 0; background: none; color: var(--muted); cursor: pointer;
+    font-size: 14px; padding: 2px 4px; }
+  #legend .x:hover { color: var(--accent); }
+  #legend { padding-right: 26px; }
+  body.legend-hidden #legend { display: none; }
+
+  /* Small pills that bring back a closed panel. */
+  .reopen { position: fixed; display: none; padding: 6px 12px; border-radius: 999px; background: var(--panel);
+    border: 1px solid var(--border); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer;
+    backdrop-filter: blur(8px); }
+  .reopen:hover { color: var(--accent); }
+  #legendOpen { left: 24px; top: 96px; }
+  body.legend-hidden #legendOpen { display: block; }
+  #infoOpen { left: 24px; bottom: 24px; }
+  #info .x { position: sticky; top: 0; float: right; margin: -6px -8px 0 0; border: 0; background: none;
+    color: var(--muted); cursor: pointer; font-size: 16px; padding: 2px 6px; }
+  #info .x:hover { color: var(--accent); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px; font-size: 12px;
+    background: rgba(255,255,255,.07); border: 1px solid var(--border); }
+  .chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 0 3px; }
+  .chip button:hover { color: var(--accent); }
+  #focusInput { margin: 4px 0 0; }
+  #info .pairs { margin: 0 0 10px; padding: 0; list-style: none; }
+  #info .pairs li { cursor: default; display: flex; justify-content: space-between; }
+  #info .pairs li:hover { color: inherit; }
+
+  #support { position: fixed; right: 20px; bottom: 20px; display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid rgba(242, 212, 138, .35);
+    color: var(--accent); text-decoration: none; font-size: 13px; font-weight: 500; backdrop-filter: blur(8px); }
+  #support:hover { background: rgba(242, 212, 138, .16); }
+  body:not(.panel-hidden) #support { right: 310px; }
+
+  /* Fly-through mode: a small dashboard at the bottom; the settings and extras step aside. */
+  #flyHud { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); display: none; align-items: center; gap: 16px;
+    padding: 9px 12px 9px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--border);
+    backdrop-filter: blur(8px); font-size: 12px; color: var(--muted); white-space: nowrap; }
+  body.flying #flyHud { display: flex; }
+  body.flying #controls, body.flying #panelToggle, body.flying #legend, body.flying #legendOpen,
+  body.flying #support { display: none; }
+  body.flying #info, body.flying #infoOpen { bottom: 84px; }
+  #flyHud .speed { display: flex; align-items: center; gap: 8px; }
+  #flyHud .bar { width: 110px; height: 6px; border-radius: 3px; background: rgba(255,255,255,.1); overflow: hidden; }
+  #flyHud .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8fd0ff, var(--accent)); }
+  #flyHud b { color: var(--text); font-weight: 500; }
+  #flyHud button { padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border); background: rgba(255,255,255,.05);
+    color: var(--text); font: inherit; cursor: pointer; }
+  #flyHud button:hover { color: var(--accent); }
+  #flyHint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); color: var(--muted); opacity: .55;
+    font-size: 12px; letter-spacing: .03em; pointer-events: none; white-space: nowrap; }
+  body.flying #flyHint { display: none; }
+  @media (hover: none) { #flyBtn, #flyHint { display: none; } }
+
+  .scene-tooltip { font: 13px Inter, sans-serif !important; background: rgba(0,0,0,.75); padding: 4px 8px; border-radius: 6px; }
+
+  @media (max-width: 700px) {
+    #title h1 { font-size: 24px; }
+    #panelToggle { top: 14px; right: 12px; }
+    #controls { top: auto; bottom: 12px; right: 12px; left: 12px; width: auto; max-height: 45vh; }
+    #legend, body.legend-hidden #legendOpen { display: none; }
+    #infoOpen { bottom: auto; top: 80px; left: 12px; }
+    #support, body:not(.panel-hidden) #support { top: 14px; right: 56px; bottom: auto; padding: 7px 11px; font-size: 12px; }
+    #info { left: 12px; right: 12px; width: auto; bottom: auto; top: 80px; max-height: 30vh; }
+  }
+</style>
+<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+<!-- r148+ ships the loader only as a module; the 0.147 script build works with this three.js. -->
+<script src="https://unpkg.com/three@0.147.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="data.js"></script>
+</head>
+<body>
+<div id="graph"></div>
+
+<div id="title" class="ui">
+  <h1>Galaxy Bible</h1>
+  <p id="stats"></p>
+</div>
+<div id="legend" class="ui"></div>
+
+<button id="panelToggle" class="ui" title="Show/hide settings (S)">⚙</button>
+<div id="controls" class="ui">
+  <input id="find" type="search" placeholder="Find: Isaiah 53, Rom 8, Psalms" autocomplete="off">
+
+  <details open>
+    <summary>Focus on books</summary>
+    <input id="focusInput" type="search" list="bookList" placeholder="Add books: Romans, Isaiah, Revelation" autocomplete="off">
+    <datalist id="bookList"></datalist>
+    <div class="chips" id="chips"></div>
+    <label class="check"><input id="withinBook" type="checkbox"> Include links within each book</label>
+    <div class="row" id="focusRow" style="display:none">
+      <button id="focusClear">Show all books</button>
+      <button id="focusFit">Frame these books</button>
+    </div>
+  </details>
+
+  <details open>
+    <summary>Display</summary>
+    <div class="ctl"><label>Links shown <b id="o-density"></b></label>
+      <input id="density" type="range" min="1000" max="30000" step="1000"></div>
+    <div class="ctl"><label>Node size <b id="o-nodeSize"></b></label>
+      <input id="nodeSize" type="range" min="0.2" max="10" step="0.1"></div>
+    <div class="ctl"><label>Glow <b id="o-glow"></b></label>
+      <input id="glow" type="range" min="0" max="1" step="0.05"></div>
+    <div class="ctl"><label for="n-linkBright">Link brightness
+      <span class="num"><input id="n-linkBright" type="number" min="0" max="100" step="1" title="Type an exact value">%</span></label>
+      <input id="linkBright" type="range" min="0" max="1" step="0.01"></div>
+    <div class="ctl"><label>Rotation speed <b id="o-spin"></b></label>
+      <input id="spin" type="range" min="0" max="5" step="0.1"></div>
+    <label class="check"><input id="legendOn" type="checkbox"> Genre key</label>
+    <label class="check"><input id="labels" type="checkbox"> Book labels</label>
+    <div class="ctl"><label>Label size <b id="o-labelSize"></b></label>
+      <input id="labelSize" type="range" min="0.3" max="4" step="0.1"></div>
+  </details>
+
+  <details open>
+    <summary>Forces</summary>
+    <div class="ctl"><label>Center force <b id="o-center"></b></label>
+      <input id="center" type="range" min="0" max="0.3" step="0.005"></div>
+    <div class="ctl"><label>Repel force <b id="o-repel"></b></label>
+      <input id="repel" type="range" min="0" max="200" step="1"></div>
+    <div class="ctl"><label>Link force <b id="o-linkForce"></b></label>
+      <input id="linkForce" type="range" min="0" max="3" step="0.05"></div>
+    <div class="ctl"><label>Link distance <b id="o-linkDist"></b></label>
+      <input id="linkDist" type="range" min="5" max="200" step="1"></div>
+    <div class="ctl"><label>Book cohesion <b id="o-cohesion"></b></label>
+      <input id="cohesion" type="range" min="0" max="1" step="0.05"></div>
+    <div class="row">
+      <button id="reheat">Re-run layout</button>
+      <button id="reset">Reset to default</button>
+    </div>
+  </details>
+
+  <div class="row">
+    <button id="present">Presentation (H)</button>
+    <button id="flyBtn">Fly a ship (F)</button>
+  </div>
+  <div class="hint">Drag to orbit · scroll to zoom · click a star to see its connections · Space pauses rotation · S hides this panel · F flies a ship</div>
+</div>
+
+<div id="flyHint" class="ui">Press F to enter flight mode</div>
+<div id="flyHud" class="ui">
+  <div class="speed"><span>Speed</span><div class="bar"><i id="flySpeed"></i></div></div>
+  <div class="keys"><b>Space</b> thrust · <b>Shift</b> brake · <b>W/S</b> or <b>↑↓</b> climb/dive · <b>A/D</b> or <b>←→</b> turn · <b>Q/E</b> roll</div>
+  <button id="flyExit">Exit (Esc)</button>
+</div>
+
+<div id="info" class="ui"></div>
+<button id="infoOpen" class="reopen ui">Show details</button>
+<button id="legendOpen" class="reopen ui">Genre key</button>
+<a id="support" class="ui" href="https://buymeacoffee.com/reformedretrieval" target="_blank" rel="noopener" title="Support this project">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><path d="M2 21h18a1 1 0 0 1 0 2H2a1 1 0 0 1 0-2zM20.242 11.022a1 1 0 0 0-.242-.688 2.990 2.990 0 0 0-2-.734H16V6a3 3 0 0 0-3-3H5a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-2.022h2a3 3 0 0 0 3-3V11.020a1 1 0 0 0-.758-.998zM14 16a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v10zm4-4.022V11.6h-2v-2h2a1 1 0 0 1 1 1v1.378a1 1 0 0 1-1 1z"/></svg>
+  <span>Support</span>
+</a>
+
+<script>
+const D = window.TSK;
+
+// ---- Colors: each genre gets a band of hue so neighbouring books look related ----------
+const GENRES = [
+  ["Law", 0, 5, 0, 28],
+  ["History", 5, 17, 34, 58],
+  ["Poetry & Wisdom", 17, 22, 78, 130],
+  ["Major Prophets", 22, 27, 150, 178],
+  ["Minor Prophets", 27, 39, 186, 210],
+  ["Gospels & Acts", 39, 44, 218, 246],
+  ["Paul's Letters", 44, 57, 258, 292],
+  ["General Letters", 57, 65, 302, 330],
+  ["Revelation", 65, 66, 345, 345],
+];
+const bookColor = [], bookGenre = [];
+for (const [name, from, to, h0, h1] of GENRES) {
+  for (let b = from; b < to; b++) {
+    const t = to - from > 1 ? (b - from) / (to - from - 1) : 0;
+    bookColor[b] = new THREE.Color().setHSL((h0 + t * (h1 - h0)) / 360, 0.9, (b - from) % 2 ? 0.55 : 0.63);
+    bookGenre[b] = name;
+  }
+}
+document.getElementById("stats").textContent =
+  `${D.totalRefs.toLocaleString()} cross references · Treasury of Scripture Knowledge`;
+document.getElementById("legend").innerHTML = `<button class="x" title="Hide genre key">×</button>` + GENRES.map(g =>
+  `<i style="color:hsl(${(g[3] + g[4]) / 2},90%,60%);background:currentColor"></i><span>${g[0]}</span>`).join("");
+
+// ---- Settings -----------------------------------------------------------------------
+const DEFAULTS = { density: 30000, nodeSize: 1, glow: 0.1, linkBright: 1, spin: 0.6, labels: true, labelSize: 1, legend: true, withinBook: false,
+                   center: 0, repel: 200, linkForce: 0, linkDist: 200, cohesion: 1 };
+const KEY = "galaxy-settings-v3";
+// Link brightness scale: 100% now equals what the older (v2) slider called 30%.
+const LINK_BRIGHT_UNIT = 0.3;
+let S = { ...DEFAULTS };
+try {
+  const v3 = JSON.parse(localStorage.getItem(KEY));
+  if (v3) Object.assign(S, v3);
+  else {
+    const v2 = JSON.parse(localStorage.getItem("galaxy-settings-v2"));
+    if (v2) Object.assign(S, v2, v2.linkBright != null ? { linkBright: +(v2.linkBright / LINK_BRIGHT_UNIT).toFixed(2) } : {});
+  }
+} catch (e) {}
+S.linkBright = Math.min(S.linkBright, 1);     // 100% is the brightest setting
+S.spin = Math.min(S.spin, 5);                 // fastest rotation: 5 turns per minute
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+
+// ---- Graph data ---------------------------------------------------------------------
+const maxChapDeg = Math.max(...D.chapters.map(c => c[2]));
+const maxBookDeg = Math.max(...D.books.map(b => b[3]));
+// Node objects persist so their positions survive changes to the link count.
+const nodes = D.chapters.map(([b, c, deg], i) => ({ id: i, b, c, deg, label: `${D.books[b][1]} ${c}`,
+  size: 6 + 26 * Math.sqrt(deg / maxChapDeg) }));
+function applySavedLayout() {
+  if (!D.layout) return false;
+  nodes.forEach((n, i) => { [n.x, n.y, n.z] = D.layout.pos[i]; n.vx = n.vy = n.vz = 0; });
+  return true;
+}
+// Hidden links between consecutive chapters keep each book together.
+const spine = [];
+for (let i = 1; i < nodes.length; i++) if (nodes[i].b === nodes[i - 1].b) spine.push([i - 1, i]);
+
+function graphData() {
+  const links = D.chapterLinks.slice(0, S.density).map(([s, t, w]) => ({ source: s, target: t, w }));
+  for (const [s, t] of spine) links.push({ source: s, target: t, w: 0, hidden: true });
+  return { nodes, links };
+}
+
+// ---- Glow texture -------------------------------------------------------------------
+function makeGlowTexture(glow) {
+  const s = 128, cv = document.createElement("canvas"); cv.width = cv.height = s;
+  const g = cv.getContext("2d"), grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+  const core = 0.16 - 0.08 * glow;              // more glow = smaller hard core, wider halo
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(core, "rgba(255,255,255,0.95)");
+  grad.addColorStop(core + 0.04, "rgba(255,255,255," + (0.25 + 0.5 * glow) + ")");
+  grad.addColorStop(0.45, "rgba(255,255,255," + (0.04 + 0.22 * glow) + ")");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad; g.fillRect(0, 0, s, s);
+  return new THREE.CanvasTexture(cv);
+}
+let glowTex = makeGlowTexture(S.glow);
+
+// ---- Stars: one point cloud (one draw call); each node gets an invisible pick target ----
+let selected = null, highlight = new Map(), litBooks = new Set(), focus = new Set();
+const SELECT_DIM = 0.5;        // when a star is clicked, everything not connected to it shows at half brightness
+const tmpV = new THREE.Vector3();
+function makePickTarget(n) {
+  const o = new THREE.Object3D();
+  o.raycast = (raycaster, hits) => {
+    if (focus.size && !focus.has(n.b)) return;    // faded books can't be hovered or clicked
+    const r = Math.max(starSize(n) * 0.35, raycaster.ray.origin.distanceTo(tmpV.set(n.x, n.y, n.z)) * 0.006);
+    tmpV.set(n.x, n.y, n.z);
+    if (raycaster.ray.distanceSqToPoint(tmpV) < r * r)
+      hits.push({ distance: raycaster.ray.origin.distanceTo(tmpV), point: tmpV.clone(), object: o });
+  };
+  return o;
+}
+function starSize(n) {
+  let k = n.size * S.nodeSize * (1.2 + S.glow);
+  if (selected) k *= n === selected ? 2 : highlight.has(n.id) ? 1.5 : 1;
+  return k;
+}
+const starMat = new THREE.ShaderMaterial({
+  uniforms: { map: { value: glowTex }, uScale: { value: 1 } },
+  vertexShader: `attribute vec3 acolor; attribute float asize; attribute float aalpha;
+    uniform float uScale; varying vec3 vColor; varying float vAlpha;
+    void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = max(asize * uScale / -mv.z, 1.5); gl_Position = projectionMatrix * mv; vColor = acolor; vAlpha = aalpha; }`,
+  fragmentShader: `uniform sampler2D map; varying vec3 vColor; varying float vAlpha;
+    void main() { vec4 t = texture2D(map, gl_PointCoord); gl_FragColor = vec4(vColor * t.rgb, t.a * vAlpha); }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+const stars = (() => {
+  const N = nodes.length, g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+  g.setAttribute("acolor", new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+  g.setAttribute("asize", new THREE.BufferAttribute(new Float32Array(N), 1));
+  g.setAttribute("aalpha", new THREE.BufferAttribute(new Float32Array(N), 1));
+  const p = new THREE.Points(g, starMat);
+  p.frustumCulled = false;
+  return p;
+})();
+function restyleStars() {
+  const a = stars.geometry.attributes;
+  nodes.forEach((n, i) => {
+    const c = bookColor[n.b];
+    a.acolor.array.set([c.r, c.g, c.b], i * 3);
+    a.asize.array[i] = starSize(n);
+    const out = focus.size && !focus.has(n.b);
+    a.aalpha.array[i] = out ? 0.04 : !selected || n === selected || highlight.has(n.id) ? 1 : SELECT_DIM;
+  });
+  a.acolor.needsUpdate = a.asize.needsUpdate = a.aalpha.needsUpdate = true;
+  starMat.uniforms.map.value = glowTex;
+}
+
+// ---- Graph --------------------------------------------------------------------------
+const Graph = ForceGraph3D()(document.getElementById("graph"))
+  .backgroundColor("#03040a")
+  .showNavInfo(false)
+  .enableNodeDrag(false)
+  .nodeThreeObject(makePickTarget)
+  .nodeLabel(n => `${n.label} · ${n.deg.toLocaleString()} cross references`)
+  .linkVisibility(false)            // links are drawn below as a single batched mesh
+  .d3VelocityDecay(0.35)
+  .warmupTicks(0)
+  .cooldownTime(15000)
+  .onEngineTick(updatePositions)
+  .onEngineStop(updatePositions)
+  .onNodeClick(select)
+  .onBackgroundClick(() => select(null));
+Graph.scene().add(stars);
+
+function updateStarScale() {
+  const h = Graph.renderer().getDrawingBufferSize(new THREE.Vector2()).y;
+  starMat.uniforms.uScale.value = h / (2 * Math.tan(Graph.camera().fov * Math.PI / 360));
+}
+
+// Custom center force (pulls everything toward the middle like Obsidian's "Center force").
+function forceGravity() {
+  let ns = [], k = 0;
+  const f = alpha => { for (const n of ns) { n.vx -= n.x * k * alpha; n.vy -= n.y * k * alpha; n.vz -= n.z * k * alpha; } };
+  f.initialize = x => ns = x;
+  f.strength = v => (k = v, f);
+  return f;
+}
+Graph.d3Force("gravity", forceGravity());
+Graph.d3Force("center", null);       // the gravity force above replaces the fixed re-centering
+
+function applyForces() {
+  Graph.d3Force("gravity").strength(S.center);
+  Graph.d3Force("charge").strength(-S.repel);
+  Graph.d3Force("link")
+    .distance(l => l.hidden ? 4 + 20 * (1 - S.cohesion) : S.linkDist)
+    .strength(l => l.hidden ? S.cohesion : S.linkForce * 0.02);
+}
+// Data changes (link count) shouldn't move stars; only force changes run the simulation.
+function runLayout() { Graph.cooldownTicks(Infinity); Graph.d3ReheatSimulation(); }
+
+// ---- Batched links (one draw call for all links) ------------------------------------
+let linkMesh = null, hiMesh = null, drawn = [];
+function buildLinkMesh() {
+  if (linkMesh) { Graph.scene().remove(linkMesh); linkMesh.geometry.dispose(); }
+  // Focus mode draws every link among the chosen books; otherwise the strongest N links.
+  drawn = focus.size
+    ? D.chapterLinks.filter(([s, t]) => focus.has(nodes[s].b) && focus.has(nodes[t].b) &&
+        (S.withinBook || nodes[s].b !== nodes[t].b))
+    : D.chapterLinks.slice(0, S.density);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(drawn.length * 6), 3));
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(drawn.length * 6), 3));
+  linkMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true,
+    depthWrite: false, blending: THREE.AdditiveBlending }));
+  linkMesh.frustumCulled = false;
+  Graph.scene().add(linkMesh);
+  colorLinks();
+  updatePositions();      // the layout may be at rest, so place the new links now
+}
+function colorLinks() {
+  if (!linkMesh) return;
+  const col = linkMesh.geometry.attributes.color.array;
+  // Many overlapping additive lines get bright, so scale brightness down as more are drawn.
+  // Focused views have far fewer links, so they get a brightness boost.
+  const k = Math.min(S.linkBright * LINK_BRIGHT_UNIT * (focus.size ? 3 : 1), 2) * Math.min(1, Math.sqrt(3000 / drawn.length)) * 0.45 *
+    (selected ? SELECT_DIM : 1);
+  drawn.forEach(([s, t], i) => {
+    const a = bookColor[nodes[s].b], b = bookColor[nodes[t].b];
+    col.set([a.r * k, a.g * k, a.b * k, b.r * k, b.g * k, b.b * k], i * 6);
+  });
+  linkMesh.geometry.attributes.color.needsUpdate = true;
+}
+
+function buildHighlight() {
+  if (hiMesh) { Graph.scene().remove(hiMesh); hiMesh.geometry.dispose(); hiMesh = null; }
+  if (!selected) return;
+  const pairs = [...highlight.keys()].map(id => [selected, nodes[id]]);
+  const g = new THREE.BufferGeometry(), col = new Float32Array(pairs.length * 6);
+  pairs.forEach(([a, b], i) => {
+    const ca = bookColor[a.b], cb = bookColor[b.b];
+    col.set([ca.r, ca.g, ca.b, cb.r, cb.g, cb.b], i * 6);
+  });
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pairs.length * 6), 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  hiMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true,
+    depthWrite: false, blending: THREE.AdditiveBlending }));
+  hiMesh.frustumCulled = false;
+  hiMesh.userData.pairs = pairs;
+  Graph.scene().add(hiMesh);
+  updatePositions();
+}
+
+function updatePositions() {
+  const sp = stars.geometry.attributes.position.array;
+  nodes.forEach((n, i) => { sp[i * 3] = n.x; sp[i * 3 + 1] = n.y; sp[i * 3 + 2] = n.z; });
+  stars.geometry.attributes.position.needsUpdate = true;
+  if (linkMesh) {
+    const p = linkMesh.geometry.attributes.position.array;
+    drawn.forEach(([s, t], i) => {
+      const a = nodes[s], b = nodes[t];
+      p[i * 6] = a.x; p[i * 6 + 1] = a.y; p[i * 6 + 2] = a.z;
+      p[i * 6 + 3] = b.x; p[i * 6 + 4] = b.y; p[i * 6 + 5] = b.z;
+    });
+    linkMesh.geometry.attributes.position.needsUpdate = true;
+  }
+  if (hiMesh) {
+    const p = hiMesh.geometry.attributes.position.array;
+    hiMesh.userData.pairs.forEach(([a, b], i) => p.set([a.x, a.y, a.z, b.x, b.y, b.z], i * 6));
+    hiMesh.geometry.attributes.position.needsUpdate = true;
+  }
+  placeLabels();
+}
+
+// ---- Book labels (fixed on-screen size, whatever the zoom) ---------------------------
+const labelSprites = D.books.map(([abbr, name], b) => {
+  const cv = document.createElement("canvas"), g = cv.getContext("2d"), fs = 64;
+  g.font = `600 ${fs}px "Cormorant Garamond", Georgia, serif`;
+  cv.width = Math.ceil(g.measureText(name).width) + 24; cv.height = fs + 24;
+  g.font = `600 ${fs}px "Cormorant Garamond", Georgia, serif`;
+  g.fillStyle = "#" + bookColor[b].clone().lerp(new THREE.Color(1, 1, 1), 0.45).getHexString();
+  g.shadowColor = "rgba(0,0,0,0.9)"; g.shadowBlur = 10;
+  g.textBaseline = "middle"; g.fillText(name, 12, cv.height / 2);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true,
+    depthWrite: false, depthTest: false, sizeAttenuation: false, opacity: 0.9 }));
+  sp.userData.aspect = cv.width / cv.height;
+  sp.renderOrder = 10;
+  Graph.scene().add(sp);
+  return sp;
+});
+function placeLabels() {
+  const sum = D.books.map(() => [0, 0, 0, 0]);
+  for (const n of nodes) {
+    if (n.x === undefined) continue;
+    const s = sum[n.b]; s[0] += n.x; s[1] += n.y; s[2] += n.z; s[3]++;
+  }
+  // With sizeAttenuation off, sprite scale is in view units at distance 1.
+  const viewH = 2 * Math.tan(Graph.camera().fov * Math.PI / 360);
+  labelSprites.forEach((sp, b) => {
+    const s = sum[b];
+    sp.visible = S.labels && s[3] > 0 && (!focus.size || focus.has(b));
+    sp.material.opacity = 0.9 * (!selected || litBooks.has(b) ? 1 : SELECT_DIM);
+    if (!s[3]) return;
+    const h = viewH * S.labelSize * (0.016 + 0.022 * Math.sqrt(D.books[b][3] / maxBookDeg));
+    sp.position.set(s[0] / s[3], s[1] / s[3], s[2] / s[3]);
+    sp.scale.set(h * sp.userData.aspect, h, 1);
+  });
+}
+
+// ---- Starfield ----------------------------------------------------------------------
+(() => {
+  const g = new THREE.BufferGeometry(), N = 4000, p = new Float32Array(N * 3), c = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const r = 20000 + Math.random() * 20000, th = Math.random() * 2 * Math.PI, ph = Math.acos(2 * Math.random() - 1);
+    p.set([r * Math.sin(ph) * Math.cos(th), r * Math.sin(ph) * Math.sin(th), r * Math.cos(ph)], i * 3);
+    const k = 0.3 + Math.random() * 0.5; c.set([k * 0.85, k * 0.9, k], i * 3);
+  }
+  g.setAttribute("position", new THREE.BufferAttribute(p, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(c, 3));
+  Graph.scene().add(new THREE.Points(g, new THREE.PointsMaterial({ size: 2.5, sizeAttenuation: false, map: makeGlowTexture(0),
+    vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+})();
+
+// ---- Building / camera --------------------------------------------------------------
+function rebuild() {
+  Graph.graphData(graphData());
+  Graph.cooldownTicks(0);           // new data alone doesn't restart the layout
+  buildLinkMesh();
+  restyleStars(); updatePositions();
+}
+
+// ---- Camera pivot -------------------------------------------------------------------
+// The camera always turns and zooms around the center of what's shown: the whole galaxy,
+// or just the focused books. The layout can drift as forces change, so the pivot follows it.
+function graphCenter() {
+  const ns = focus.size ? nodes.filter(n => focus.has(n.b)) : nodes, c = { x: 0, y: 0, z: 0 };
+  for (const n of ns) { c.x += n.x / ns.length; c.y += n.y / ns.length; c.z += n.z / ns.length; }
+  return c;
+}
+let flyingUntil = 0;                  // while the camera is flying somewhere, don't adjust the pivot
+function flyTo(pos, ms) {
+  flyingUntil = performance.now() + ms;
+  Graph.cameraPosition(pos, graphCenter(), ms);
+}
+function viewDir() {                  // unit vector from the pivot toward the camera
+  const p = Graph.camera().position, t = controls.target;
+  return new THREE.Vector3(p.x - t.x, p.y - t.y, p.z - t.z).normalize();
+}
+
+function fitCamera() {
+  const c = graphCenter();
+  const rs = nodes.map(n => Math.hypot(n.x - c.x, n.y - c.y, n.z - c.z)).sort((a, b) => a - b);
+  const r = rs[Math.floor(rs.length * 0.97)] || 100;
+  const d = viewDir().multiplyScalar(r * (innerWidth < innerHeight ? 3.6 : 2.4));
+  flyTo({ x: c.x + d.x, y: c.y + d.y, z: c.z + d.z }, 1500);
+}
+function resetCamera(ms = 0) {
+  if (!D.layout) return fitCamera();
+  // The saved camera was relative to the origin; keep its angle and distance around the graph's center.
+  const [x, y, z] = D.layout.camera, c = graphCenter();
+  flyTo({ x: c.x + x, y: c.y + y, z: c.z + z }, ms);
+}
+
+// ---- Selection & info panel ---------------------------------------------------------
+function select(node) {
+  selected = node; highlight.clear();
+  if (node) infoHidden = false;
+  if (node) {
+    // Neighbours come from the full data, not just the links currently drawn.
+    const all = new Map();
+    for (const [s, t, w] of D.chapterLinks) {
+      if (s === node.id) all.set(t, (all.get(t) || 0) + w);
+      else if (t === node.id) all.set(s, (all.get(s) || 0) + w);
+    }
+    if (focus.size) for (const id of [...all.keys()])
+      if (!focus.has(nodes[id].b) || (!S.withinBook && nodes[id].b === node.b)) all.delete(id);
+    highlight = new Map([...all].sort((a, b) => b[1] - a[1]).slice(0, 25));
+    // Fly in close enough that the chapter and its neighbours fill the view. The camera sits on the
+    // line from the graph's center through the chapter, so the chapter is centered on screen while
+    // rotation and zoom still pivot on the graph's center.
+    const near = Math.max(...[...highlight.keys()].map(id => Math.hypot(nodes[id].x - node.x, nodes[id].y - node.y, nodes[id].z - node.z)));
+    const dist = Math.min(near * 1.6, Graph.camera().position.distanceTo(node)) || 300;
+    const c = graphCenter(), out = new THREE.Vector3(node.x - c.x, node.y - c.y, node.z - c.z);
+    const dir = out.length() > 1 ? out.normalize() : viewDir();
+    if (!fly.on) flyTo({ x: node.x + dir.x * dist, y: node.y + dir.y * dist, z: node.z + dir.z * dist }, 1500);
+  }
+  litBooks = new Set(node ? [node.b, ...[...highlight.keys()].map(id => nodes[id].b)] : []);
+  restyleStars(); colorLinks(); buildHighlight(); showInfo();
+}
+
+// The details panel can be closed; a pill brings it back. Clicking a new star reopens it.
+let infoHidden = false;
+document.getElementById("infoOpen").onclick = () => { infoHidden = false; showInfo(); };
+
+function showInfo() {
+  const el = document.getElementById("info"), open = document.getElementById("infoOpen");
+  if (!selected && !focus.size) { el.style.display = open.style.display = "none"; return; }
+  if (infoHidden) {
+    el.style.display = "none"; open.style.display = "block";
+    open.textContent = selected ? "Show chapter details" : "Show book stats";
+    return;
+  }
+  open.style.display = "none";
+  if (selected) showChapterInfo(el); else showFocusInfo(el);
+  el.insertAdjacentHTML("afterbegin", `<button class="x" title="Close">×</button>`);
+  el.querySelector(".x").onclick = () => { infoHidden = true; showInfo(); };
+}
+
+function showChapterInfo(el) {
+  const top = [...highlight.entries()].slice(0, 12);
+  el.innerHTML = `<h2 style="color:#${bookColor[selected.b].getHexString()}">${selected.label}</h2>
+    <div class="sub">${bookGenre[selected.b]} · ${selected.deg.toLocaleString()} cross references</div>
+    <div class="sub">Most connected to:</div>
+    <ol>${top.map(([id, w]) => `<li data-id="${id}">${nodes[id].label} <span>${w.toLocaleString()}</span></li>`).join("")}</ol>`;
+  el.style.display = "block";
+  el.querySelectorAll("li").forEach(li => li.onclick = () => select(nodes[+li.dataset.id]));
+}
+
+// Summary for focus mode: link totals between each pair of chosen books, and the strongest chapter pairs.
+function showFocusInfo(el) {
+  const books = [...focus].sort((a, b) => a - b), pairs = [];
+  for (let i = 0; i < books.length; i++) for (let j = i + 1; j < books.length; j++) {
+    const [x, y] = [books[i], books[j]];
+    const w = D.bookLinks.find(([s, t]) => (s === x && t === y) || (s === y && t === x))?.[2] || 0;
+    pairs.push([x, y, w]);
+  }
+  pairs.sort((a, b) => b[2] - a[2]);
+  const top = drawn.slice(0, 10);       // chapterLinks is sorted strongest first
+  const name = b => D.books[b][1], col = b => "#" + bookColor[b].getHexString();
+  el.innerHTML = `<h2>${books.map(b => `<span style="color:${col(b)}">${name(b)}</span>`).join(" · ")}</h2>
+    <div class="sub">${drawn.length.toLocaleString()} chapter-to-chapter links shown</div>
+    ${pairs.length ? `<div class="sub">Cross references between books:</div>
+    <ul class="pairs">${pairs.map(([x, y, w]) => `<li><span>${name(x)} ↔ ${name(y)}</span><span>${w.toLocaleString()}</span></li>`).join("")}</ul>` : ""}
+    ${top.length ? `<div class="sub">Strongest chapter links:</div>
+    <ol>${top.map(([s, t, w]) => `<li data-id="${s}">${nodes[s].label} ↔ ${nodes[t].label} <span>${w}</span></li>`).join("")}</ol>` : ""}`;
+  el.style.display = "block";
+  el.querySelectorAll("ol li").forEach(li => li.onclick = () => select(nodes[+li.dataset.id]));
+}
+
+// ---- Search -------------------------------------------------------------------------
+function matchBook(name) {
+  name = name.trim().toLowerCase().replace(/\s+/g, " ").replace(/^(\d)\s*/, "$1 ");
+  if (!name) return -1;
+  // Exact name or abbreviation first ("John" must not match "1 John"), then a prefix ("Rev", "Isa").
+  const exact = D.books.findIndex(([abbr, full]) =>
+    full.toLowerCase() === name || abbr.toLowerCase().replace(/^(\d)/, "$1 ") === name);
+  if (exact >= 0) return exact;
+  return D.books.findIndex(([, full]) => {
+    const f = full.toLowerCase();
+    return f.startsWith(name) || f.replace(/ /g, "").startsWith(name.replace(/ /g, ""));
+  });
+}
+function findNode(q) {
+  const m = q.trim().match(/^(.*?)\s*(\d+)?$/);
+  const b = matchBook(m[1]), chap = m[2] ? +m[2] : 1;
+  if (b < 0) return null;
+  return nodes.find(n => n.b === b && n.c === chap) || nodes.find(n => n.b === b);
+}
+
+// ---- Book focus ---------------------------------------------------------------------
+document.getElementById("bookList").innerHTML = D.books.map(b => `<option value="${b[1]}">`).join("");
+function setFocus(books, frame = true) {
+  focus = new Set(books);
+  selected = null; highlight.clear(); litBooks.clear(); buildHighlight();
+  document.getElementById("chips").innerHTML = [...focus].sort((a, b) => a - b).map(b =>
+    `<span class="chip" style="color:#${bookColor[b].clone().lerp(new THREE.Color(1, 1, 1), 0.4).getHexString()}">${D.books[b][1]}<button data-b="${b}" title="Remove">×</button></span>`).join("");
+  document.querySelectorAll("#chips button").forEach(btn => btn.onclick = () => {
+    const next = new Set(focus); next.delete(+btn.dataset.b); setFocus(next);
+  });
+  document.getElementById("focusRow").style.display = focus.size ? "" : "none";
+  buildLinkMesh(); restyleStars(); placeLabels(); showInfo();
+  // Keep the focus in the address so a view can be bookmarked or shared.
+  const hash = focus.size ? "#books=" + [...focus].sort((a, b) => a - b).map(b => D.books[b][0]).join(",") : "";
+  history.replaceState(null, "", location.pathname + location.search + hash);
+  if (frame) focus.size ? frameFocus() : resetCamera(1200);
+}
+function frameFocus() {
+  const ns = nodes.filter(n => focus.has(n.b));
+  if (!ns.length) return;
+  const c = graphCenter();
+  const r = Math.max(...ns.map(n => Math.hypot(n.x - c.x, n.y - c.y, n.z - c.z)), 200);
+  const d = viewDir().multiplyScalar(r * 2.6);
+  flyTo({ x: c.x + d.x, y: c.y + d.y, z: c.z + d.z }, 1500);
+}
+function addFocusFromText(text) {
+  const add = text.split(/,|;|\band\b|&/i).map(matchBook).filter(b => b >= 0);
+  if (!add.length) return false;
+  setFocus(new Set([...focus, ...add]));
+  return true;
+}
+const focusInput = document.getElementById("focusInput");
+focusInput.addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const ok = addFocusFromText(focusInput.value);
+  focusInput.style.borderColor = ok ? "" : "#c55";
+  if (ok) focusInput.value = "";
+});
+// Picking a name from the suggestion list adds it straight away.
+focusInput.addEventListener("input", () => {
+  if (D.books.some(b => b[1] === focusInput.value)) { addFocusFromText(focusInput.value); focusInput.value = ""; }
+});
+document.getElementById("focusClear").onclick = () => setFocus([]);
+document.getElementById("focusFit").onclick = frameFocus;
+document.getElementById("withinBook").onchange = e => { S.withinBook = e.target.checked; save(); setFocus(focus, false); };
+document.getElementById("find").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const n = findNode(e.target.value);
+  e.target.style.borderColor = n ? "" : "#c55";
+  if (n) select(n);
+});
+
+// ---- Controls -----------------------------------------------------------------------
+const FMT = { density: v => (+v).toLocaleString(), nodeSize: v => (+v).toFixed(1) + "×", glow: v => Math.round(v * 100) + "%",
+  linkBright: v => Math.round(v * 100) + "%", spin: v => +v ? (+v).toFixed(1) + " turns/min" : "off", labelSize: v => (+v).toFixed(1) + "×",
+  center: v => (+v).toFixed(3), repel: v => v, linkForce: v => (+v).toFixed(2), linkDist: v => v,
+  cohesion: v => Math.round(v * 100) + "%" };
+const FORCE_KEYS = ["center", "repel", "linkForce", "linkDist", "cohesion"];
+const controls = Graph.controls();
+
+// A slider's value shows either as text (o-…) or in a box you can type into (n-…, in percent).
+function showValue(k, v) {
+  const out = document.getElementById("o-" + k), num = document.getElementById("n-" + k);
+  if (out) out.textContent = FMT[k](v);
+  if (num && document.activeElement !== num) num.value = Math.round(v * 100);
+}
+
+function syncControls() {
+  for (const k in FMT) {
+    document.getElementById(k).value = S[k];
+    showValue(k, S[k]);
+  }
+  document.getElementById("labels").checked = S.labels;
+  document.getElementById("withinBook").checked = S.withinBook;
+  setLegend(S.legend);
+}
+
+for (const k in FMT) {
+  const el = document.getElementById(k);
+  el.addEventListener("input", () => {
+    S[k] = +el.value; showValue(k, el.value);
+    if (k === "nodeSize") restyleStars();
+    if (k === "glow") { glowTex = makeGlowTexture(S.glow); restyleStars(); }
+    if (k === "linkBright") colorLinks();
+    if (k === "labelSize") placeLabels();
+    if (k === "spin") paused = false;
+    if (FORCE_KEYS.includes(k)) { applyForces(); runLayout(); }
+  });
+  el.addEventListener("change", () => { save(); if (k === "density") rebuild(); });
+}
+// Typed exact values (percent) drive the matching slider.
+document.querySelectorAll('input[id^="n-"]').forEach(num => {
+  const k = num.id.slice(2), slider = document.getElementById(k);
+  num.addEventListener("input", () => {
+    if (num.value === "" || isNaN(+num.value)) return;
+    const v = Math.min(Math.max(+num.value, +num.min), +num.max) / 100;
+    slider.value = v; slider.dispatchEvent(new Event("input"));
+  });
+  num.addEventListener("change", () => { save(); showValue(k, S[k]); num.value = Math.round(S[k] * 100); });
+});
+document.getElementById("labels").onchange = e => { S.labels = e.target.checked; save(); placeLabels(); };
+function setLegend(on) {
+  S.legend = on;
+  document.body.classList.toggle("legend-hidden", !on);
+  document.getElementById("legendOn").checked = on;
+}
+document.getElementById("legendOn").onchange = e => { setLegend(e.target.checked); save(); };
+document.querySelector("#legend .x").onclick = () => { setLegend(false); save(); };
+document.getElementById("legendOpen").onclick = () => { setLegend(true); save(); };
+document.getElementById("reheat").onclick = runLayout;
+document.getElementById("reset").onclick = () => {
+  S = { ...DEFAULTS }; save();
+  glowTex = makeGlowTexture(S.glow);
+  syncControls(); applyForces(); select(null);
+  applySavedLayout(); rebuild(); setFocus([], false); resetCamera(1200);
+};
+
+// Settings panel: hide/show (remembered), and presentation mode hides everything.
+const setPanel = hidden => {
+  document.body.classList.toggle("panel-hidden", hidden);
+  document.getElementById("panelToggle").textContent = hidden ? "⚙" : "×";
+  try { localStorage.setItem("galaxy-panel-hidden", hidden ? "1" : ""); } catch (e) {}
+};
+let panelHidden = false;
+try { panelHidden = !!localStorage.getItem("galaxy-panel-hidden"); } catch (e) {}
+setPanel(panelHidden);
+document.getElementById("panelToggle").onclick = () => setPanel(panelHidden = !panelHidden);
+
+const togglePresent = () => document.body.classList.toggle("hide-ui");
+document.getElementById("present").onclick = togglePresent;
+// Rotation: the library's camera controls don't auto-rotate, so turn the camera ourselves.
+// S.spin is in turns per minute and is timed by the clock, so it's the same at any zoom or frame rate.
+let paused = false, lastSpin = performance.now();
+const spinAxis = new THREE.Vector3(), spinOffset = new THREE.Vector3();
+
+// ---- Fly-through mode ---------------------------------------------------------------
+// F (or the Fly button) puts a ship where the camera is; the camera chases it. Esc returns.
+// Arcade flight: the ship goes where its nose points. Space thrusts, Shift brakes.
+const fly = { on: false, keys: new Set(), speed: 0, yaw: 0, pitch: 0, roll: 0, size: 1, max: 1 };
+const ship = new THREE.Group(), shipModel = new THREE.Group();
+(() => {
+  // Built along -Z (the way a camera looks), 2 units long; scaled to the galaxy when flying starts.
+  // A key light from above and a cool rim light from behind give the ship shape. (The graph's own,
+  // flat lights are turned down in startFlying; the ship is the only thing they light.)
+  const key = new THREE.DirectionalLight(0xfff4e0, 1.0), rim = new THREE.DirectionalLight(0x8fb8ff, 0.8);
+  key.position.set(0.6, 1, -0.4); rim.position.set(-0.5, -0.3, 1);
+  ship.add(key, key.target, rim, rim.target);
+  const V = (x, y) => new THREE.Vector2(x, y);
+  const hull = new THREE.MeshPhongMaterial({ color: 0x8c93a3, specular: 0x9aa4b8, shininess: 70 });
+  const dark = new THREE.MeshPhongMaterial({ color: 0x23262f, specular: 0x505868, shininess: 40 });
+  const gold = new THREE.MeshPhongMaterial({ color: 0xb58d35, specular: 0xffe0a0, shininess: 60 });
+  const glass = new THREE.MeshPhongMaterial({ color: 0x06182a, emissive: 0x0b3358, specular: 0xffffff, shininess: 120,
+    transparent: true, opacity: 0.92 });
+  const glowMat = color => new THREE.MeshBasicMaterial({ color });
+  const glowTexture = makeGlowTexture(0.7);
+  const sprite = (color, s) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture, color, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending }));
+    sp.scale.setScalar(s);
+    return sp;
+  };
+  // The ship built here is a stand-in: an artist's model (ship/ship.glb) replaces it once that loads.
+  const built = new THREE.Group();
+  const add = (geo, mat, [x, y, z] = [0, 0, 0], [rx, ry, rz] = [0, 0, 0], [sx, sy, sz] = [1, 1, 1]) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.scale.set(sx, sy, sz);
+    built.add(m);
+    return m;
+  };
+  // A flat extruded plate from an outline drawn in x (right) and z (back), with softened edges.
+  const plate = (pts, depth) => new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, z]) => V(x, -z))),
+    { depth, bevelEnabled: true, bevelThickness: depth * 0.4, bevelSize: depth * 0.4, bevelSegments: 2 });
+
+  // Fuselage: a smooth lathe from tail to needle nose, flattened a little.
+  const profile = [[0, -0.92], [0.12, -0.9], [0.17, -0.8], [0.2, -0.5], [0.2, 0.05], [0.17, 0.4], [0.12, 0.65], [0.06, 0.86], [0, 1]];
+  add(new THREE.LatheGeometry(profile.map(([r, y]) => V(r, y)), 28), hull, [0, 0, 0], [-Math.PI / 2, 0, 0], [1.15, 1, 0.72]);
+  // Gold stripe around the nose, and a dark spine along the top.
+  add(new THREE.TorusGeometry(0.162, 0.012, 8, 32), gold, [0, 0, -0.42], [0, 0, 0], [1.15, 0.72, 1]);
+  add(new THREE.BoxGeometry(0.06, 0.03, 0.9), dark, [0, 0.135, 0.3]);
+  // Cockpit canopy.
+  add(new THREE.SphereGeometry(0.11, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), glass, [0, 0.07, -0.32], [0, 0, 0], [0.95, 0.9, 2.3]);
+
+  // Swept wings with a notch at the trailing edge, and gold leading-edge strips.
+  const wing = [[0, -0.35], [0.98, 0.42], [1.02, 0.62], [0.62, 0.55], [0.5, 0.66], [0.2, 0.62], [0, 0.6]];
+  const wingGeo = plate([...wing, ...wing.slice(1, -1).reverse().map(([x, z]) => [-x, z])], 0.025);
+  add(wingGeo, hull, [0, -0.02, 0], [-Math.PI / 2, 0, 0]);
+  for (const s of [1, -1]) {
+    add(new THREE.BoxGeometry(Math.hypot(0.78, 0.61), 0.03, 0.04), gold, [s * 0.59, -0.005, 0.115], [0, -s * Math.atan2(0.61, 0.78), 0]);
+    // Wingtip cannons and navigation lights (red on the left, green on the right, as on aircraft).
+    add(new THREE.CylinderGeometry(0.022, 0.03, 0.7, 10), dark, [s * 1.02, -0.01, 0.3], [Math.PI / 2, 0, 0]);
+    add(new THREE.CylinderGeometry(0.008, 0.008, 0.25, 6), gold, [s * 1.02, -0.01, -0.15], [Math.PI / 2, 0, 0]);
+    const nav = s > 0 ? 0x46ff8a : 0xff4a4a;
+    add(new THREE.SphereGeometry(0.022, 10, 8), glowMat(nav), [s * 1.02, 0.03, 0.62]);
+    const navGlow = sprite(nav, 0.16); navGlow.position.set(s * 1.02, 0.03, 0.62); built.add(navGlow);
+
+    // Engine nacelles with intakes, dark nozzles and a glowing core.
+    add(new THREE.CylinderGeometry(0.1, 0.12, 0.72, 20), hull, [s * 0.3, -0.03, 0.46], [Math.PI / 2, 0, 0]);
+    add(new THREE.SphereGeometry(0.1, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), dark, [s * 0.3, -0.03, 0.1], [-Math.PI / 2, 0, 0], [1, 0.9, 1]);
+    add(new THREE.TorusGeometry(0.11, 0.016, 8, 24), gold, [s * 0.3, -0.03, 0.3]);
+    add(new THREE.CylinderGeometry(0.12, 0.095, 0.12, 20, 1, true), dark, [s * 0.3, -0.03, 0.88], [Math.PI / 2, 0, 0]);
+    add(new THREE.CircleGeometry(0.085, 20), glowMat(0x9fdcff), [s * 0.3, -0.03, 0.9]);
+    const flame = sprite(0x8fd0ff, 0.5); flame.position.set(s * 0.3, -0.03, 1.0); shipModel.add(flame);
+    shipModel.userData.flames = [...(shipModel.userData.flames || []), flame];
+
+    // Twin tail fins, canted outward.
+    // Outline drawn as (back, up); turning it a quarter about y stands it upright along the hull.
+    const finGeo = new THREE.ExtrudeGeometry(new THREE.Shape([V(0, 0), V(0.42, 0), V(0.48, 0.34), V(0.32, 0.34)]),
+      { depth: 0.018, bevelEnabled: true, bevelThickness: 0.007, bevelSize: 0.007, bevelSegments: 2 });
+    const fin = new THREE.Mesh(finGeo, hull);
+    fin.rotation.y = -Math.PI / 2; fin.position.x = 0.009;
+    const finTip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.025, 0.17), gold);
+    finTip.position.set(0, 0.34, 0.4);
+    const finMount = new THREE.Group();
+    finMount.add(fin, finTip);
+    finMount.position.set(s * 0.16, 0.08, 0.3); finMount.rotation.z = -s * 0.38;
+    built.add(finMount);
+  }
+  shipModel.add(built);
+
+  // Spaceship #27 from the free "3D Spaceships Pack" (itch.io). Its nose points +z and it sits on y = 0,
+  // so it's turned to fly along -z, centered, and scaled a bit longer (2.5 units) since it's slimmer.
+  new THREE.GLTFLoader().load("ship/ship.glb", gltf => {
+    const model = gltf.scene, box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3()), k = 2.5 / size.z;
+    model.position.set(-c.x, -c.y, -c.z);
+    // It's marked fully metal, which renders black without reflections to show, so it's made partly metal.
+    // The page draws in linear color, so its texture is read as-is to keep the colors of the artist's preview.
+    model.traverse(o => {
+      if (!o.isMesh) return;
+      Object.assign(o.material, { metalness: 0.35, roughness: 0.5 });
+      if (o.material.map) { o.material.map.encoding = THREE.LinearEncoding; o.material.needsUpdate = true; }
+    });
+    const holder = new THREE.Group();
+    holder.add(model); holder.scale.setScalar(k); holder.rotation.y = Math.PI;
+    shipModel.remove(built); shipModel.add(holder);
+    // Exhaust glows at its three nozzles: the center block and the two side pods.
+    for (const f of shipModel.userData.flames) shipModel.remove(f);
+    shipModel.userData.flames = [[0, 0.2], [0.22, 0.2], [-0.22, 0.2]].map(([x, y]) => {
+      const flame = sprite(0xc8b4ff, 0.5);
+      flame.position.set(x * k, (y - c.y) * k, (size.z / 2) * k + 0.05);
+      shipModel.add(flame);
+      return flame;
+    });
+  });
+  ship.add(shipModel);
+  ship.visible = false;
+  Graph.scene().add(ship);
+})();
+const flyFwd = new THREE.Vector3(), flyQ = new THREE.Quaternion(), flyAxis = new THREE.Vector3(), chase = new THREE.Vector3();
+let flyHome = null;                     // where the camera was before flying, to return to on exit
+
+function startFlying() {
+  if (fly.on) return;
+  const cam = Graph.camera(), c = graphCenter();
+  const rs = nodes.map(n => Math.hypot(n.x - c.x, n.y - c.y, n.z - c.z)).sort((a, b) => a - b);
+  const r = rs[Math.floor(rs.length * 0.97)] || 1000;
+  fly.size = r * 0.004;                 // half the ship's length
+  fly.max = r / 8;                      // top speed: across the galaxy in about 16 seconds
+  Object.assign(fly, { on: true, speed: 0, yaw: 0, pitch: 0, roll: 0 });
+  fly.keys.clear();
+  flyHome = cam.position.clone();
+  // Start just in front of the camera, facing the same way, so the view doesn't jump.
+  ship.quaternion.copy(cam.quaternion);
+  ship.position.copy(cam.position).add(cam.getWorldDirection(flyFwd).multiplyScalar(fly.size * 8));
+  ship.scale.setScalar(fly.size);
+  ship.visible = true;
+  for (const l of Graph.scene().children) if (l.isAmbientLight) l.intensity = 0.35; else if (l.isDirectionalLight) l.intensity = 0.3;
+  controls.enabled = false;
+  controls.noRotate = controls.noZoom = controls.noPan = true;
+  document.body.classList.add("flying");
+  document.activeElement?.blur();      // so Space thrusts instead of pressing a focused button
+}
+function stopFlying() {
+  if (!fly.on) return;
+  fly.on = false; fly.keys.clear();
+  ship.visible = false;
+  Graph.camera().up.set(0, 1, 0);
+  controls.enabled = true;
+  controls.noRotate = controls.noZoom = controls.noPan = false;
+  document.body.classList.remove("flying");
+  resetCamera(1500);
+}
+document.getElementById("flyBtn").onclick = startFlying;
+document.getElementById("flyExit").onclick = stopFlying;
+
+function flyStep(dt) {
+  const k = fly.keys, held = (...ks) => ks.some(x => k.has(x)) ? 1 : 0;
+  const ease = n => 1 - Math.exp(-dt * n);
+  // Turn rates ease in and out so steering feels smooth.
+  fly.yaw += ((held("arrowleft", "a") - held("arrowright", "d")) * 1.3 - fly.yaw) * ease(6);
+  fly.pitch += ((held("arrowup", "w") - held("arrowdown", "s")) * 1.1 - fly.pitch) * ease(6);
+  fly.roll += ((held("q") - held("e")) * 1.8 - fly.roll) * ease(6);
+  for (const [axis, rate] of [[[0, 1, 0], fly.yaw], [[1, 0, 0], fly.pitch], [[0, 0, 1], fly.roll]]) {
+    flyQ.setFromAxisAngle(flyAxis.fromArray(axis), rate * dt);
+    ship.quaternion.multiply(flyQ);
+  }
+  ship.quaternion.normalize();
+  if (k.has(" ")) fly.speed = Math.min(fly.max, fly.speed + fly.max * 0.7 * dt);
+  else fly.speed *= Math.exp(-dt * (k.has("shift") ? 3 : 0.4));
+  flyFwd.set(0, 0, -1).applyQuaternion(ship.quaternion);
+  ship.position.addScaledVector(flyFwd, fly.speed * dt);
+  // The model banks into turns and dips its nose; the engine flames grow with thrust.
+  shipModel.rotation.set(fly.pitch * 0.15, 0, fly.yaw * 0.45);
+  const f = k.has(" ") ? 1 : 0.25 + 0.75 * fly.speed / fly.max;
+  for (const flame of shipModel.userData.flames) {
+    flame.scale.setScalar((0.22 + 0.45 * f) * (0.9 + 0.1 * Math.random()));
+    flame.material.opacity = 0.35 + 0.65 * f;
+  }
+  // Chase camera: behind and a little above, lagging slightly; it looks just past the ship.
+  const cam = Graph.camera();
+  chase.set(0, fly.size * 2.6, fly.size * 7).applyQuaternion(ship.quaternion).add(ship.position);
+  cam.position.lerp(chase, ease(5));
+  cam.up.lerp(flyAxis.set(0, 1, 0).applyQuaternion(ship.quaternion), ease(5)).normalize();
+  controls.target.copy(ship.position).addScaledVector(flyFwd, fly.size * 12);
+  cam.lookAt(controls.target);
+  document.getElementById("flySpeed").style.width = (100 * fly.speed / fly.max) + "%";
+}
+const FLY_KEYS = new Set(["arrowleft", "arrowright", "arrowup", "arrowdown", "w", "a", "s", "d", "q", "e", " ", "shift"]);
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type !== "checkbox" && e.target.type !== "range") return;
+  const key = e.key.toLowerCase();
+  if (!fly.on) { if (key === "f" && !e.ctrlKey && !e.metaKey) startFlying(); return; }
+  if (key === "escape" || key === "f") { stopFlying(); return; }
+  if (FLY_KEYS.has(key)) { e.preventDefault(); fly.keys.add(key); }
+}, true);
+addEventListener("keyup", e => fly.keys.delete(e.key.toLowerCase()));
+addEventListener("blur", () => fly.keys.clear());
+
+(function spin(now) {
+  // Slow frames still turn the full amount; only long stalls (e.g. a hidden tab) are skipped.
+  const dt = Math.min((now - lastSpin) / 1000, 2); lastSpin = now;
+  if (fly.on) { flyStep(Math.min(dt, 0.1)); requestAnimationFrame(spin); return; }
+  const cam = Graph.camera(), t = controls.target;
+  // Keep the pivot on the graph's center; moving the camera by the same amount keeps the view steady.
+  if (now > flyingUntil) {
+    const c = graphCenter(), dx = c.x - t.x, dy = c.y - t.y, dz = c.z - t.z;
+    if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 0.01) {
+      t.set(c.x, c.y, c.z);
+      cam.position.set(cam.position.x + dx, cam.position.y + dy, cam.position.z + dz);
+      cam.lookAt(t.x, t.y, t.z);
+    }
+  }
+  if (!paused && S.spin > 0) {
+    spinAxis.set(cam.up.x, cam.up.y, cam.up.z).normalize();
+    spinOffset.set(cam.position.x - t.x, cam.position.y - t.y, cam.position.z - t.z)
+      .applyAxisAngle(spinAxis, S.spin * 2 * Math.PI / 60 * dt);
+    cam.position.set(t.x + spinOffset.x, t.y + spinOffset.y, t.z + spinOffset.z);
+    cam.lookAt(t.x, t.y, t.z);
+  }
+  requestAnimationFrame(spin);
+})(lastSpin);
+
+addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type === "search") return;
+  if (e.key === "h" || e.key === "H") togglePresent();
+  if (fly.on) return;                   // while flying, S and Space steer the ship
+  if (e.key === "s" || e.key === "S") setPanel(panelHidden = !panelHidden);
+  if (e.key === " ") { e.preventDefault(); paused = !paused; }
+});
+addEventListener("resize", () => { Graph.width(innerWidth).height(innerHeight); updateStarScale(); });
+
+// ---- Start --------------------------------------------------------------------------
+syncControls();
+applyForces();
+const hasLayout = applySavedLayout();
+rebuild();
+updateStarScale();
+if (hasLayout) resetCamera();
+else { runLayout(); flyTo({ x: 0, y: 0, z: 1200 }, 0); setTimeout(fitCamera, 4500); }
+// A link like ...#books=Rom,Isa,Rev opens focused on those books.
+const hashBooks = decodeURIComponent(location.hash).match(/books=([^&]+)/);
+if (hashBooks) {
+  const bs = hashBooks[1].split(",").map(matchBook).filter(b => b >= 0);
+  if (bs.length) setTimeout(() => setFocus(bs), 100);
+}
+</script>
+</body>
+</html>

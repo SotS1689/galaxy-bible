@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#fff8e2"/>
+      <stop offset=".35" stop-color="#f2d48a" stop-opacity=".85"/>
+      <stop offset="1" stop-color="#f2d48a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="sky" cx="50%" cy="50%" r="60%">
+      <stop offset="0" stop-color="#121633"/>
+      <stop offset="1" stop-color="#03040a"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sky)"/>
+  <!-- Cross-reference arcs, bowed through the centre like the galaxy's links -->
+  <g fill="none" stroke="#f2d48a" stroke-width="1.1" stroke-opacity=".45" stroke-linecap="round">
+    <path d="M32 10Q32 32 24.5 52.7"/>
+    <path d="M46.1 15.1Q32 32 12.9 43"/>
+    <path d="M53.7 28.2Q32 32 10.3 28.2"/>
+    <path d="M51.1 43Q32 32 17.9 15.1"/>
+    <path d="M39.5 52.7Q32 32 32 10"/>
+    <path d="M46.1 15.1Q32 32 39.5 52.7"/>
+    <path d="M53.7 28.2Q32 32 12.9 43"/>
+    <path d="M24.5 52.7Q32 32 17.9 15.1"/>
+  </g>
+  <circle cx="32" cy="32" r="13" fill="url(#core)"/>
+  <!-- One star per genre, in the same hues as the visualization -->
+  <g>
+    <circle cx="32" cy="10" r="4" fill="hsl(14 90% 62%)"/>
+    <circle cx="46.1" cy="15.1" r="4" fill="hsl(46 90% 60%)"/>
+    <circle cx="53.7" cy="28.2" r="4" fill="hsl(104 80% 55%)"/>
+    <circle cx="51.1" cy="43" r="4" fill="hsl(164 85% 50%)"/>
+    <circle cx="39.5" cy="52.7" r="4" fill="hsl(198 90% 60%)"/>
+    <circle cx="24.5" cy="52.7" r="4" fill="hsl(232 90% 68%)"/>
+    <circle cx="12.9" cy="43" r="4" fill="hsl(275 85% 66%)"/>
+    <circle cx="10.3" cy="28.2" r="4" fill="hsl(316 85% 64%)"/>
+    <circle cx="17.9" cy="15.1" r="4" fill="hsl(345 90% 62%)"/>
+  </g>
+</svg>
