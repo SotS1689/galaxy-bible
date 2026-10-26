@@ -218,7 +218,7 @@
 <div id="flyHint" class="ui">Press F to enter flight mode</div>
 <div id="flyHud" class="ui">
   <div class="speed"><span>Speed</span><div class="bar"><i id="flySpeed"></i></div></div>
-  <div class="keys"><b>Space</b> thrust · <b>Shift</b> brake · <b>W/S</b> or <b>↑↓</b> climb/dive · <b>A/D</b> or <b>←→</b> turn · <b>Q/E</b> roll · <b>R</b> lasers</div>
+  <div class="keys"><b>Space</b> thrust · <b>Shift</b> brake · <b>W/S</b> or <b>↑↓</b> climb/dive · <b>A/D</b> or <b>←→</b> turn · <b>Q/E</b> roll · <b>R</b> or <b>click</b> lasers</div>
   <button id="flyExit">Exit (Esc)</button>
 </div>
 
@@ -380,8 +380,8 @@ const Graph = ForceGraph3D()(document.getElementById("graph"))
   .cooldownTime(15000)
   .onEngineTick(updatePositions)
   .onEngineStop(updatePositions)
-  .onNodeClick(select)
-  .onBackgroundClick(() => select(null));
+  .onNodeClick(n => { if (!fly.on) select(n); })    // while flying, clicks fire lasers instead
+  .onBackgroundClick(() => { if (!fly.on) select(null); });
 Graph.scene().add(stars);
 
 function updateStarScale() {
@@ -938,7 +938,7 @@ function fireLaser() {
 }
 function laserStep(dt) {
   laserCooldown -= dt;
-  if (fly.on && fly.keys.has("r") && laserCooldown <= 0) { fireLaser(); laserCooldown = 0.15; }
+  if (fly.on && (fly.keys.has("r") || fly.keys.has("mouse")) && laserCooldown <= 0) { fireLaser(); laserCooldown = 0.15; }
   for (let i = lasers.length - 1; i >= 0; i--) {
     const b = lasers[i], u = b.userData;
     u.age += dt;
@@ -1027,6 +1027,9 @@ addEventListener("keydown", e => {
   if (FLY_KEYS.has(key)) { e.preventDefault(); fly.keys.add(key); }
 }, true);
 addEventListener("keyup", e => fly.keys.delete(e.key.toLowerCase()));
+// Holding the left mouse button also fires, since some keyboards can't register three keys at once.
+Graph.renderer().domElement.addEventListener("pointerdown", e => { if (fly.on && e.button === 0) fly.keys.add("mouse"); });
+addEventListener("pointerup", e => { if (e.button === 0) fly.keys.delete("mouse"); });
 addEventListener("blur", () => fly.keys.clear());
 
 (function spin(now) {
