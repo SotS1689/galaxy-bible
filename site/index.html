@@ -197,7 +197,7 @@
     <div class="ctl"><label>Repel force <b id="o-repel"></b></label>
       <input id="repel" type="range" min="0" max="200" step="1"></div>
     <div class="ctl"><label>Link force <b id="o-linkForce"></b></label>
-      <input id="linkForce" type="range" min="0" max="3" step="0.05"></div>
+      <input id="linkForce" type="range" min="0" max="1" step="0.01"></div>
     <div class="ctl"><label>Link distance <b id="o-linkDist"></b></label>
       <input id="linkDist" type="range" min="5" max="200" step="1"></div>
     <div class="ctl"><label>Book cohesion <b id="o-cohesion"></b></label>
@@ -275,6 +275,7 @@ try {
 } catch (e) {}
 S.linkBright = Math.min(S.linkBright, 1);     // 100% is the brightest setting
 S.spin = Math.min(S.spin, 5);                 // fastest rotation: 5 turns per minute
+S.linkForce = Math.min(S.linkForce, 1);       // strongest link pull
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
 
 // ---- Graph data ---------------------------------------------------------------------
