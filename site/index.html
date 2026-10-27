@@ -127,7 +127,7 @@
   #flyHud button:hover { color: var(--accent); }
   #flyHint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); color: var(--muted); opacity: .55;
     font-size: 12px; letter-spacing: .03em; pointer-events: none; white-space: nowrap; }
-  body.flying #flyHint { display: none; }
+  body.flying #flyHint, body.hide-ui #flyHint { display: none; }
   @media (hover: none) { #flyBtn, #flyHint { display: none; } }
 
   .scene-tooltip { font: 13px Inter, sans-serif !important; background: rgba(0,0,0,.75); padding: 4px 8px; border-radius: 6px; }
