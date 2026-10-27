@@ -59,6 +59,8 @@
   .row button { flex: 1; padding: 7px; border-radius: 7px; border: 1px solid var(--border); background: rgba(255,255,255,.05);
     color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
   .row button:hover { color: var(--accent); }
+  .row select { padding: 6px; border-radius: 7px; border: 1px solid var(--border); background: #14161f;
+    color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
   .hint { color: var(--muted); font-size: 11px; margin-top: 10px; }
 
   #info { position: fixed; left: 24px; bottom: 24px; width: 300px; max-height: 50vh; overflow: auto; padding: 14px 16px;
@@ -211,6 +213,12 @@
   <div class="row">
     <button id="present">Presentation (H)</button>
     <button id="flyBtn">Fly a ship (F)</button>
+  </div>
+  <div class="row">
+    <select id="exportSize" title="Width of the saved image; the height follows the window's shape">
+      <option value="3840">4K</option><option value="7680" selected>8K</option><option value="15360">16K</option>
+    </select>
+    <button id="exportPng" title="Save the galaxy as an image, without labels or panels">Save PNG</button>
   </div>
   <div class="hint">Drag to orbit · scroll to zoom · click a star to see its connections · Space pauses rotation · S hides this panel · F flies a ship</div>
 </div>
@@ -519,7 +527,7 @@ function placeLabels() {
 }
 
 // ---- Starfield ----------------------------------------------------------------------
-(() => {
+const starfield = (() => {
   const g = new THREE.BufferGeometry(), N = 4000, p = new Float32Array(N * 3), c = new Float32Array(N * 3);
   for (let i = 0; i < N; i++) {
     const r = 20000 + Math.random() * 20000, th = Math.random() * 2 * Math.PI, ph = Math.acos(2 * Math.random() - 1);
@@ -528,8 +536,10 @@ function placeLabels() {
   }
   g.setAttribute("position", new THREE.BufferAttribute(p, 3));
   g.setAttribute("color", new THREE.BufferAttribute(c, 3));
-  Graph.scene().add(new THREE.Points(g, new THREE.PointsMaterial({ size: 2.5, sizeAttenuation: false, map: makeGlowTexture(0),
-    vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })));
+  const p2 = new THREE.Points(g, new THREE.PointsMaterial({ size: 2.5, sizeAttenuation: false, map: makeGlowTexture(0),
+    vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  Graph.scene().add(p2);
+  return p2;
 })();
 
 // ---- Building / camera --------------------------------------------------------------
@@ -1068,6 +1078,64 @@ addEventListener("keydown", e => {
   if (e.key === "s" || e.key === "S") setPanel(panelHidden = !panelHidden);
   if (e.key === " ") { e.preventDefault(); paused = !paused; }
 });
+// ---- High-resolution PNG export -----------------------------------------------------
+// Renders just the galaxy (no labels, no panels) at the chosen width, in tiles so it can be far
+// larger than the screen. Each tile is drawn with a margin and cropped, so big glowing stars
+// near a tile's edge aren't clipped. Lines are always 1 pixel wide, so links are brightened by
+// how much the image is enlarged; otherwise they'd look faint next to the screen.
+async function exportPNG(W) {
+  const btn = document.getElementById("exportPng"), was = btn.textContent;
+  btn.disabled = true; btn.textContent = "Rendering…";
+  await new Promise(r => requestAnimationFrame(() => setTimeout(r)));   // let the button repaint first
+  const r = Graph.renderer(), cam = Graph.camera(), scene = Graph.scene();
+  const H = Math.round(W * innerHeight / innerWidth), k = H / innerHeight;  // output pixels per screen pixel
+  const out = document.createElement("canvas"); out.width = W; out.height = H;
+  const ctx = out.getContext("2d");
+  const maxPt = r.getContext().getParameter(r.getContext().ALIASED_POINT_SIZE_RANGE)[1];
+  const TILE = 2048, M = Math.min(512, Math.ceil(maxPt / 2));
+  const oldRatio = r.getPixelRatio(), oldSize = starfield.material.size;
+  const lineBoost = H / r.getDrawingBufferSize(new THREE.Vector2()).y;
+  const labelsWere = labelSprites.map(sp => sp.visible), shipWas = ship.visible;
+  labelSprites.forEach(sp => sp.visible = false);
+  ship.visible = false; lasers.forEach(b => b.visible = false);
+  starfield.material.size = oldSize * k;
+  if (linkMesh) {
+    const col = linkMesh.geometry.attributes.color;
+    for (let i = 0; i < col.array.length; i++) col.array[i] *= lineBoost;
+    col.needsUpdate = true;
+  }
+  starMat.uniforms.uScale.value = H / (2 * Math.tan(cam.fov * Math.PI / 360));
+  r.setPixelRatio(1);
+  r.setSize(TILE + 2 * M, TILE + 2 * M, false);
+  try {
+    for (let y = 0; y < H; y += TILE)
+      for (let x = 0; x < W; x += TILE) {
+        cam.setViewOffset(W, H, x - M, y - M, TILE + 2 * M, TILE + 2 * M);
+        r.render(scene, cam);
+        ctx.drawImage(r.domElement, M, M, TILE, TILE, x, y, TILE, TILE);
+      }
+  } finally {
+    cam.clearViewOffset();
+    labelSprites.forEach((sp, i) => sp.visible = labelsWere[i]);
+    ship.visible = shipWas; lasers.forEach(b => b.visible = true);
+    starfield.material.size = oldSize;
+    colorLinks();
+    r.setPixelRatio(oldRatio);
+    r.setSize(innerWidth, innerHeight);
+    updateStarScale();
+  }
+  btn.textContent = "Saving…";
+  out.toBlob(blob => {
+    btn.disabled = false; btn.textContent = was;
+    if (!blob) { alert("This browser couldn't make an image that large. Try a smaller size."); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `galaxy-bible-${W}x${H}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, "image/png");
+}
+document.getElementById("exportPng").onclick = () => exportPNG(+document.getElementById("exportSize").value);
 addEventListener("resize", () => { Graph.width(innerWidth).height(innerHeight); updateStarScale(); });
 
 // ---- Start --------------------------------------------------------------------------
