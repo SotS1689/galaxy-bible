@@ -917,7 +917,10 @@ const ship = new THREE.Group(), shipModel = new THREE.Group();
   Graph.scene().add(ship);
 })();
 // R fires little purple lasers from both guns at once. Purely for fun: they hit nothing and fade out.
-const lasers = [], laserGeo = new THREE.CylinderGeometry(1, 1, 1, 8).rotateX(Math.PI / 2);
+// A bolt's origin is its head, with the beam trailing behind it (+z). It starts as a sliver at the gun and
+// stretches out as it flies, so its tail stays at the gun until the whole bolt has left it.
+const lasers = [], laserGeo = new THREE.CylinderGeometry(1, 1, 1, 8).rotateX(Math.PI / 2).translate(0, 0, 0.5);
+const LASER_LEN = 3.4;                  // full length, in ship units
 const laserCore = new THREE.MeshBasicMaterial({ color: 0xf0d8ff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
 const laserGlow = new THREE.MeshBasicMaterial({ color: 0xa040ff, transparent: true, opacity: 0.9, depthWrite: false,
   blending: THREE.AdditiveBlending });
@@ -925,13 +928,13 @@ let laserCooldown = 0;
 function fireLaser() {
   for (const side of [-1, 1]) {
     const bolt = new THREE.Group(), core = new THREE.Mesh(laserGeo, laserCore), glow = new THREE.Mesh(laserGeo, laserGlow);
-    core.scale.set(0.05, 0.05, 3); glow.scale.set(0.14, 0.14, 3.4);
+    core.scale.set(0.05, 0.05, LASER_LEN - 0.4); glow.scale.set(0.14, 0.14, LASER_LEN);
     bolt.add(glow, core);
     bolt.quaternion.copy(ship.quaternion);
-    bolt.position.set(side * 0.45, -0.02, -0.9);
+    bolt.position.set(side * 0.45, -0.02, -0.5);
     ship.localToWorld(bolt.position);
-    bolt.scale.setScalar(fly.size);
-    bolt.userData = { age: 0, speed: fly.speed + fly.max * 4 };
+    bolt.scale.set(fly.size, fly.size, 0.001);
+    bolt.userData = { age: 0, dist: 0, speed: fly.speed + fly.max * 4 };
     Graph.scene().add(bolt);
     lasers.push(bolt);
   }
@@ -943,6 +946,8 @@ function laserStep(dt) {
     const b = lasers[i], u = b.userData;
     u.age += dt;
     b.translateZ(-u.speed * dt);
+    u.dist += u.speed * dt;
+    b.scale.z = Math.max(0.001, Math.min(u.dist, LASER_LEN * fly.size) / LASER_LEN);
     if (u.age > 1.5 || !fly.on) { Graph.scene().remove(b); lasers.splice(i, 1); }
   }
 }
