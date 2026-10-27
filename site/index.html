@@ -220,6 +220,13 @@
     </select>
     <button id="exportPng" title="Save the galaxy as an image, without labels or panels">Save PNG</button>
   </div>
+  <div class="row">
+    <button id="export3dPhoto" title="Save a picture and its depth map; upload both together to Facebook for a 3D photo">3D photo</button>
+    <select id="videoLength" title="How long the galaxy takes to turn once around">
+      <option value="12">12 s</option><option value="24" selected>24 s</option><option value="36">36 s</option>
+    </select>
+    <button id="exportVideo" title="Make a square video of the galaxy turning once around; it loops seamlessly">Video</button>
+  </div>
   <div class="hint">Drag to orbit · scroll to zoom · click a star to see its connections · Space pauses rotation · S hides this panel · F flies a ship</div>
 </div>
 
@@ -324,6 +331,7 @@ let glowTex = makeGlowTexture(S.glow);
 
 // ---- Stars: one point cloud (one draw call); each node gets an invisible pick target ----
 let selected = null, highlight = new Map(), litBooks = new Set(), focus = new Set();
+let exporting = false;         // true while an image or video export is drawing
 const SELECT_DIM = 0.5;        // when a star is clicked, everything not connected to it shows at half brightness
 const tmpV = new THREE.Vector3();
 function makePickTarget(n) {
@@ -437,13 +445,14 @@ function buildLinkMesh() {
   colorLinks();
   updatePositions();      // the layout may be at rest, so place the new links now
 }
+// Many overlapping additive lines get bright, so scale brightness down as more are drawn.
+// Focused views have far fewer links, so they get a brightness boost.
+const linkK = () => Math.min(S.linkBright * LINK_BRIGHT_UNIT * (focus.size ? 3 : 1), 2) *
+  Math.min(1, Math.sqrt(3000 / drawn.length)) * 0.45 * (selected ? SELECT_DIM : 1);
 function colorLinks() {
   if (!linkMesh) return;
   const col = linkMesh.geometry.attributes.color.array;
-  // Many overlapping additive lines get bright, so scale brightness down as more are drawn.
-  // Focused views have far fewer links, so they get a brightness boost.
-  const k = Math.min(S.linkBright * LINK_BRIGHT_UNIT * (focus.size ? 3 : 1), 2) * Math.min(1, Math.sqrt(3000 / drawn.length)) * 0.45 *
-    (selected ? SELECT_DIM : 1);
+  const k = linkK();
   drawn.forEach(([s, t], i) => {
     const a = bookColor[nodes[s].b], b = bookColor[nodes[t].b];
     col.set([a.r * k, a.g * k, a.b * k, b.r * k, b.g * k, b.b * k], i * 6);
@@ -517,7 +526,7 @@ function placeLabels() {
   const viewH = 2 * Math.tan(Graph.camera().fov * Math.PI / 360);
   labelSprites.forEach((sp, b) => {
     const s = sum[b];
-    sp.visible = S.labels && s[3] > 0 && (!focus.size || focus.has(b));
+    sp.visible = S.labels && !exporting && s[3] > 0 && (!focus.size || focus.has(b));
     sp.material.opacity = 0.9 * (!selected || litBooks.has(b) ? 1 : SELECT_DIM);
     if (!s[3]) return;
     const h = viewH * S.labelSize * (0.016 + 0.022 * Math.sqrt(D.books[b][3] / maxBookDeg));
@@ -1050,6 +1059,7 @@ addEventListener("blur", () => fly.keys.clear());
 (function spin(now) {
   // Slow frames still turn the full amount; only long stalls (e.g. a hidden tab) are skipped.
   const dt = Math.min((now - lastSpin) / 1000, 2); lastSpin = now;
+  if (exporting) { requestAnimationFrame(spin); return; }     // a video export is turning the camera
   if (fly.on) { flyStep(Math.min(dt, 0.1)); requestAnimationFrame(spin); return; }
   const cam = Graph.camera(), t = controls.target;
   // Keep the pivot on the graph's center; moving the camera by the same amount keeps the view steady.
@@ -1078,27 +1088,35 @@ addEventListener("keydown", e => {
   if (e.key === "s" || e.key === "S") setPanel(panelHidden = !panelHidden);
   if (e.key === " ") { e.preventDefault(); paused = !paused; }
 });
-// ---- High-resolution PNG export -----------------------------------------------------
-// Renders just the galaxy (no labels, no panels) at the chosen width, in tiles so it can be far
-// larger than the screen. Each tile is drawn with a margin and cropped, so big glowing stars
-// near a tile's edge aren't clipped. Lines are always 1 pixel wide, so links are brightened by
-// how much the image is enlarged; otherwise they'd look faint next to the screen.
-async function exportPNG(W) {
-  const btn = document.getElementById("exportPng"), was = btn.textContent;
-  btn.disabled = true; btn.textContent = "Rendering…";
-  await new Promise(r => requestAnimationFrame(() => setTimeout(r)));   // let the button repaint first
-  const r = Graph.renderer(), cam = Graph.camera(), scene = Graph.scene();
-  const H = Math.round(W * innerHeight / innerWidth), k = H / innerHeight;  // output pixels per screen pixel
-  const out = document.createElement("canvas"); out.width = W; out.height = H;
-  const ctx = out.getContext("2d");
-  const maxPt = r.getContext().getParameter(r.getContext().ALIASED_POINT_SIZE_RANGE)[1];
-  const TILE = 2048, M = Math.min(512, Math.ceil(maxPt / 2));
-  const oldRatio = r.getPixelRatio(), oldSize = starfield.material.size;
+// ---- Exports: high-resolution PNG, Facebook 3D photo, turntable video -----------------
+// Every export shows just the galaxy: no labels, panels or ship.
+const saveBlob = (blob, name) => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+const pngBlob = cv => new Promise(res => cv.toBlob(res, "image/png"));
+// Shows `label` on the button while `job` runs, after letting the button repaint.
+async function busy(btn, label, job) {
+  const was = btn.textContent;
+  btn.disabled = true; btn.textContent = label;
+  await new Promise(r => requestAnimationFrame(() => setTimeout(r)));
+  try { await job(); } finally { btn.disabled = false; btn.textContent = was; }
+}
+
+// Sets the scene up to be drawn H pixels tall, runs draw(renderer, camera), then puts everything back.
+// Lines are always 1 pixel wide, so links are brightened by how much the picture is enlarged;
+// otherwise they'd look faint next to the screen.
+async function exportView(H, draw) {
+  const r = Graph.renderer(), cam = Graph.camera();
+  const oldRatio = r.getPixelRatio(), oldSize = starfield.material.size, shipWas = ship.visible;
   const lineBoost = H / r.getDrawingBufferSize(new THREE.Vector2()).y;
-  const labelsWere = labelSprites.map(sp => sp.visible), shipWas = ship.visible;
+  exporting = true;
   labelSprites.forEach(sp => sp.visible = false);
   ship.visible = false; lasers.forEach(b => b.visible = false);
-  starfield.material.size = oldSize * k;
+  starfield.material.size = oldSize * H / innerHeight;
   if (linkMesh) {
     const col = linkMesh.geometry.attributes.color;
     for (let i = 0; i < col.array.length; i++) col.array[i] *= lineBoost;
@@ -1106,36 +1124,210 @@ async function exportPNG(W) {
   }
   starMat.uniforms.uScale.value = H / (2 * Math.tan(cam.fov * Math.PI / 360));
   r.setPixelRatio(1);
-  r.setSize(TILE + 2 * M, TILE + 2 * M, false);
-  try {
-    for (let y = 0; y < H; y += TILE)
-      for (let x = 0; x < W; x += TILE) {
-        cam.setViewOffset(W, H, x - M, y - M, TILE + 2 * M, TILE + 2 * M);
-        r.render(scene, cam);
-        ctx.drawImage(r.domElement, M, M, TILE, TILE, x, y, TILE, TILE);
-      }
-  } finally {
+  try { return await draw(r, cam); }
+  finally {
+    exporting = false;
     cam.clearViewOffset();
-    labelSprites.forEach((sp, i) => sp.visible = labelsWere[i]);
+    cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix();
     ship.visible = shipWas; lasers.forEach(b => b.visible = true);
     starfield.material.size = oldSize;
     colorLinks();
     r.setPixelRatio(oldRatio);
     r.setSize(innerWidth, innerHeight);
     updateStarScale();
+    placeLabels();
   }
-  btn.textContent = "Saving…";
-  out.toBlob(blob => {
-    btn.disabled = false; btn.textContent = was;
+}
+// Draws the current view W×H in tiles, so it can be far larger than the screen. Each tile is drawn
+// with a margin and cropped, so big glowing stars near a tile's edge aren't clipped.
+function renderTiles(r, cam, W, H) {
+  const out = document.createElement("canvas"); out.width = W; out.height = H;
+  const ctx = out.getContext("2d"), gl = r.getContext();
+  const TILE = 2048, M = Math.min(512, Math.ceil(gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1] / 2));
+  r.setSize(TILE + 2 * M, TILE + 2 * M, false);
+  for (let y = 0; y < H; y += TILE)
+    for (let x = 0; x < W; x += TILE) {
+      cam.setViewOffset(W, H, x - M, y - M, TILE + 2 * M, TILE + 2 * M);
+      r.render(Graph.scene(), cam);
+      ctx.drawImage(r.domElement, M, M, TILE, TILE, x, y, TILE, TILE);
+    }
+  cam.clearViewOffset();
+  return out;
+}
+
+function exportPNG(W) {
+  const btn = document.getElementById("exportPng"), H = Math.round(W * innerHeight / innerWidth);
+  return busy(btn, "Rendering…", async () => {
+    const out = await exportView(H, (r, cam) => renderTiles(r, cam, W, H));
+    btn.textContent = "Saving…";
+    const blob = await pngBlob(out);
     if (!blob) { alert("This browser couldn't make an image that large. Try a smaller size."); return; }
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `galaxy-bible-${W}x${H}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, "image/png");
+    saveBlob(blob, `galaxy-bible-${W}x${H}.png`);
+  });
 }
 document.getElementById("exportPng").onclick = () => exportPNG(+document.getElementById("exportSize").value);
+
+// Facebook 3D photo: a picture plus a depth map (white = near, black = far) with the same name and
+// "_depth" added. Uploaded together, Facebook makes a photo that tilts as people scroll or move the
+// mouse. Light from many depths overlaps in each pixel, so the map uses the average depth of that
+// light, weighted by how bright each star or link is there. It's drawn small and enlarged with a
+// blur, since Facebook needs smooth shapes rather than thin lines.
+const PHOTO_WIDTH = 2048, DEPTH_SHRINK = 8;
+function depthMaterials(near, far) {
+  const head = "uniform float uNear, uFar, uWeight; varying float vDepth;";
+  const calc = "vDepth = 0.2 + 0.8 * clamp((uFar + mv.z) / (uFar - uNear), 0.0, 1.0);";
+  // Red gathers depth × weight and green the weight; red ÷ green is then the average depth.
+  const opts = weight => ({ transparent: true, depthTest: false, depthWrite: false,
+    blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor,
+    uniforms: { uNear: { value: near }, uFar: { value: far }, uWeight: { value: weight },
+      map: starMat.uniforms.map, uScale: starMat.uniforms.uScale } });
+  const line = weight => new THREE.ShaderMaterial({ ...opts(weight),
+    vertexShader: `${head} void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); ${calc} gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `${head} void main() { gl_FragColor = vec4(vDepth * uWeight, uWeight, 0.0, 1.0); }` });
+  return {
+    stars: new THREE.ShaderMaterial({ ...opts(1),
+      vertexShader: `attribute float asize; attribute float aalpha; uniform float uScale; varying float vAlpha; ${head}
+        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); ${calc} vAlpha = aalpha;
+          gl_PointSize = max(asize * uScale / -mv.z, 1.5); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform sampler2D map; varying float vAlpha; ${head}
+        void main() { float w = texture2D(map, gl_PointCoord).a * vAlpha; gl_FragColor = vec4(vDepth * w, w, 0.0, 1.0); }` }),
+    links: line(linkK()), highlight: line(1),
+  };
+}
+function renderDepth(r, cam, W, H) {
+  // Depth runs from the nearest to the farthest stars in view (ignoring a few stragglers).
+  const dir = cam.getWorldDirection(new THREE.Vector3());
+  const ds = (focus.size ? nodes.filter(n => focus.has(n.b)) : nodes)
+    .map(n => tmpV.set(n.x, n.y, n.z).sub(cam.position).dot(dir)).sort((a, b) => a - b);
+  const near = Math.max(1, ds[Math.floor(ds.length * 0.02)]), far = Math.max(near + 1, ds[Math.floor(ds.length * 0.98)]);
+  const m = depthMaterials(near, far);
+  const swaps = [[stars, m.stars], [linkMesh, m.links], [hiMesh, m.highlight]].filter(([o]) => o);
+  const was = swaps.map(([o, mat]) => { const old = o.material; o.material = mat; return old; });
+  const clear = r.getClearColor(new THREE.Color()), clearAlpha = r.getClearAlpha();
+  const w = Math.round(W / DEPTH_SHRINK), h = Math.round(H / DEPTH_SHRINK);
+  const rt = new THREE.WebGLRenderTarget(w, h, { type: THREE.FloatType });
+  const px = new Float32Array(w * h * 4);
+  starfield.visible = false;
+  starMat.uniforms.uScale.value /= DEPTH_SHRINK;
+  try {
+    r.setRenderTarget(rt); r.setClearColor(0x000000, 0);
+    r.render(Graph.scene(), cam);
+    r.readRenderTargetPixels(rt, 0, 0, w, h, px);
+  } finally {
+    r.setRenderTarget(null); rt.dispose();
+    swaps.forEach(([o], i) => o.material = was[i]);
+    Object.values(m).forEach(mat => mat.dispose());
+    starfield.visible = true;
+    starMat.uniforms.uScale.value *= DEPTH_SHRINK;
+    r.setClearColor(clear, clearAlpha);
+  }
+  // Averaging pulls every pixel toward the middle, so stretch the depths to fill the range.
+  // Very faint pixels fade toward black so the galaxy's edge blends into the background.
+  const weights = [], means = [];
+  for (let i = 0; i < px.length; i += 4) if (px[i + 1] > 0) { weights.push(px[i + 1]); means.push(px[i] / px[i + 1]); }
+  weights.sort((a, b) => a - b); means.sort((a, b) => a - b);
+  const wRef = weights[Math.floor(weights.length * 0.25)] || 1;
+  const lo = means[Math.floor(means.length * 0.05)] || 0, hi = Math.max(lo + 0.01, means[Math.floor(means.length * 0.95)] || 1);
+  const small = document.createElement("canvas"); small.width = w; small.height = h;
+  const sg = small.getContext("2d"), img = sg.createImageData(w, h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const i = ((h - 1 - y) * w + x) * 4, o = (y * w + x) * 4, wt = px[i + 1];   // GL rows run bottom-up
+      const d = 0.25 + 0.75 * Math.min(1, Math.max(0, (px[i] / wt - lo) / (hi - lo)));
+      const v = wt > 0 ? 255 * d * Math.min(1, wt / wRef) : 0;
+      img.data[o] = img.data[o + 1] = img.data[o + 2] = v; img.data[o + 3] = 255;
+    }
+  sg.putImageData(img, 0, 0);
+  const depth = document.createElement("canvas"); depth.width = W; depth.height = H;
+  const g = depth.getContext("2d");
+  g.fillRect(0, 0, W, H);
+  g.filter = `blur(${Math.round(W / 300)}px)`;
+  g.drawImage(small, 0, 0, W, H);
+  return depth;
+}
+function export3DPhoto() {
+  const btn = document.getElementById("export3dPhoto");
+  const W = PHOTO_WIDTH, H = Math.round(W * innerHeight / innerWidth);
+  return busy(btn, "Rendering…", async () => {
+    const [photo, depth] = await exportView(H, (r, cam) => [renderTiles(r, cam, W, H), renderDepth(r, cam, W, H)]);
+    btn.textContent = "Saving…";
+    saveBlob(await pngBlob(photo), "galaxy-bible-3d.png");
+    saveBlob(await pngBlob(depth), "galaxy-bible-3d_depth.png");
+  });
+}
+document.getElementById("export3dPhoto").onclick = export3DPhoto;
+
+// Turntable video: the galaxy turns once around in a square 1080×1080 MP4, a size every social site
+// takes. Each frame is drawn and encoded one at a time (not recorded live), so the video is a steady
+// 30 fps however slow the computer is, and it loops perfectly: the last frame is one step before
+// the first. The MP4 packer is loaded only when a video is made.
+const VIDEO_SIZE = 1080, VIDEO_FPS = 30;
+const MUXER_URL = "https://unpkg.com/mp4-muxer@5.2.2/build/mp4-muxer.js";
+const loadScript = src => new Promise((ok, fail) => {
+  const s = document.createElement("script");
+  s.src = src; s.onload = ok; s.onerror = () => fail(new Error("Couldn't load " + src));
+  document.head.append(s);
+});
+async function videoCodec() {
+  if (!window.VideoEncoder) return null;
+  for (const codec of ["avc1.640028", "avc1.4d0028", "avc1.420028"]) {   // H.264 High, Main, Baseline
+    const config = { codec, width: VIDEO_SIZE, height: VIDEO_SIZE, bitrate: 16e6, framerate: VIDEO_FPS };
+    if ((await VideoEncoder.isConfigSupported(config)).supported) return config;
+  }
+  return null;
+}
+async function exportVideo() {
+  const config = await videoCodec();
+  if (!config) { alert("This browser can't make videos. Try Chrome or Edge."); return; }
+  const seconds = +document.getElementById("videoLength").value, frames = seconds * VIDEO_FPS;
+  const btn = document.getElementById("exportVideo");
+  // The live view is squashed to a square while the video is made, so cover it.
+  const cover = document.createElement("div");
+  cover.style.cssText = "position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(3,4,10,.92);" +
+    "color:var(--muted);font-size:14px";
+  cover.textContent = "Making video…";
+  document.body.append(cover);
+  try {
+    await busy(btn, "Making…", async () => {
+      if (!window.Mp4Muxer) await loadScript(MUXER_URL);
+      const muxer = new Mp4Muxer.Muxer({ target: new Mp4Muxer.ArrayBufferTarget(), fastStart: "in-memory",
+        video: { codec: "avc", width: VIDEO_SIZE, height: VIDEO_SIZE, frameRate: VIDEO_FPS } });
+      let failure = null;
+      const encoder = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: e => failure = e });
+      encoder.configure(config);
+      await exportView(VIDEO_SIZE, async (r, cam) => {
+        r.setSize(VIDEO_SIZE, VIDEO_SIZE, false);
+        cam.aspect = 1; cam.updateProjectionMatrix();
+        const center = controls.target.clone(), start = cam.position.clone().sub(center), axis = cam.up.clone().normalize();
+        try {
+          for (let i = 0; i < frames && !failure; i++) {
+            cam.position.copy(start).applyAxisAngle(axis, 2 * Math.PI * i / frames).add(center);
+            cam.lookAt(center);
+            r.render(Graph.scene(), cam);
+            const frame = new VideoFrame(r.domElement, { timestamp: Math.round(i * 1e6 / VIDEO_FPS), duration: Math.round(1e6 / VIDEO_FPS) });
+            encoder.encode(frame, { keyFrame: i % (VIDEO_FPS * 2) === 0 });
+            frame.close();
+            // Let the encoder catch up, and let the progress text repaint now and then.
+            while (encoder.encodeQueueSize > 8) await new Promise(ok => setTimeout(ok, 5));
+            if (i % 10 === 0) { cover.textContent = `Making video… ${Math.round(100 * i / frames)}%`; await new Promise(ok => setTimeout(ok)); }
+          }
+        } finally {
+          cam.position.copy(center).add(start); cam.lookAt(center);
+        }
+      });
+      await encoder.flush();
+      encoder.close();
+      if (failure) throw failure;
+      muxer.finalize();
+      saveBlob(new Blob([muxer.target.buffer], { type: "video/mp4" }), `galaxy-bible-${seconds}s.mp4`);
+    });
+  } catch (e) {
+    alert("Couldn't make the video: " + e.message);
+  } finally {
+    cover.remove();
+  }
+}
+document.getElementById("exportVideo").onclick = exportVideo;
 addEventListener("resize", () => { Graph.width(innerWidth).height(innerHeight); updateStarScale(); });
 
 // ---- Start --------------------------------------------------------------------------
