@@ -184,7 +184,7 @@
   <details open>
     <summary>Display</summary>
     <div class="ctl"><label>Links shown <b id="o-density"></b></label>
-      <input id="density" type="range" min="1000" max="30000" step="1000"></div>
+      <input id="density" type="range" min="1000" max="127000" step="1000"></div>
     <div class="ctl"><label>Node size <b id="o-nodeSize"></b></label>
       <input id="nodeSize" type="range" min="0.2" max="10" step="0.1"></div>
     <div class="ctl"><label>Glow <b id="o-glow"></b></label>
@@ -282,7 +282,8 @@ document.getElementById("legend").innerHTML = `<button class="x" title="Hide gen
   `<i style="color:hsl(${(g[3] + g[4]) / 2},90%,60%);background:currentColor"></i><span>${g[0]}</span>`).join("");
 
 // ---- Settings -----------------------------------------------------------------------
-const DEFAULTS = { density: 30000, nodeSize: 1, glow: 0.1, linkBright: 0.3, spin: 0.6, labels: true, labelSize: 1, legend: true, withinBook: false,
+const DEFAULTS = { density: 1e9,       // links shown: more than there are, so all of them
+ nodeSize: 1, glow: 0.1, linkBright: 0.3, spin: 0.6, labels: true, labelSize: 1, legend: true, withinBook: false,
                    center: 0, repel: 200, linkForce: 0, linkDist: 200, cohesion: 1 };
 const KEY = "galaxy-settings-v3";
 // Link brightness scale: 100% now equals what the older (v2) slider called 30%.
@@ -290,7 +291,8 @@ const LINK_BRIGHT_UNIT = 0.3;
 let S = { ...DEFAULTS };
 try {
   const v3 = JSON.parse(localStorage.getItem(KEY));
-  if (v3) Object.assign(S, v3);
+  // 30,000 was the old most-links setting; now the most is every link between books.
+  if (v3) Object.assign(S, v3, v3.density >= 30000 ? { density: DEFAULTS.density } : {});
   else {
     const v2 = JSON.parse(localStorage.getItem("galaxy-settings-v2"));
     if (v2) Object.assign(S, v2, v2.linkBright != null ? { linkBright: +(v2.linkBright / LINK_BRIGHT_UNIT).toFixed(2) } : {});
@@ -316,8 +318,12 @@ function applySavedLayout() {
 const spine = [];
 for (let i = 1; i < nodes.length; i++) if (nodes[i].b === nodes[i - 1].b) spine.push([i - 1, i]);
 
+// The galaxy shows links between books only (strongest first); links within a book are left out.
+const betweenLinks = D.chapterLinks.filter(([s, t]) => nodes[s].b !== nodes[t].b);
+const DENSITY_STEP = 1000, DENSITY_MAX = Math.ceil(betweenLinks.length / DENSITY_STEP) * DENSITY_STEP;
+S.density = Math.min(S.density, DENSITY_MAX);
 function graphData() {
-  const links = D.chapterLinks.slice(0, S.density).map(([s, t, w]) => ({ source: s, target: t, w }));
+  const links = betweenLinks.slice(0, S.density).map(([s, t, w]) => ({ source: s, target: t, w }));
   for (const [s, t] of spine) links.push({ source: s, target: t, w: 0, hidden: true });
   return { nodes, links };
 }
@@ -527,7 +533,7 @@ function buildLinkMesh() {
   drawn = focus.size
     ? D.chapterLinks.filter(([s, t]) => focus.has(nodes[s].b) && focus.has(nodes[t].b) &&
         (S.withinBook || nodes[s].b !== nodes[t].b))
-    : D.chapterLinks.slice(0, S.density);
+    : betweenLinks.slice(0, S.density);
   const refs = drawn.reduce((a, l) => a + l[2], 0);
   linkSplit = focus.size > 0 && refs <= SPLIT_MAX;
   linkMesh = linkSplit
@@ -539,7 +545,9 @@ function buildLinkMesh() {
 // Many overlapping additive lines get bright, so scale brightness down as more are drawn.
 // Focused views have far fewer links, so they get a brightness boost.
 const linkK = () => Math.min(S.linkBright * LINK_BRIGHT_UNIT * (focus.size ? 3 : 1), 2) *
-  Math.min(1, Math.sqrt(3000 / (linkMesh ? linkMesh.userData.n : 1))) * 0.45 * (selected ? SELECT_DIM : 1);
+  linkDim(linkMesh ? linkMesh.userData.n : 1) * 0.45 * (selected ? SELECT_DIM : 1);
+// Past 30,000 lines, dim a little faster so the crowded middle doesn't turn white.
+const linkDim = n => Math.min(1, Math.sqrt(3000 / n)) * Math.min(1, Math.pow(30000 / n, 0.4));
 function colorLinks() { if (linkMesh) colorStrands(linkMesh, linkK()); }
 
 // A clicked chapter's links to its closest neighbours: one bowed strand per cross reference.
@@ -663,8 +671,9 @@ function select(node) {
       if (s === node.id) all.set(t, (all.get(t) || 0) + w);
       else if (t === node.id) all.set(s, (all.get(s) || 0) + w);
     }
-    if (focus.size) for (const id of [...all.keys()])
-      if (!focus.has(nodes[id].b) || (!S.withinBook && nodes[id].b === node.b)) all.delete(id);
+    // Links within the chapter's own book only count when a focus view asks for them.
+    for (const id of [...all.keys()])
+      if ((focus.size && !focus.has(nodes[id].b)) || (!(focus.size && S.withinBook) && nodes[id].b === node.b)) all.delete(id);
     highlight = new Map([...all].sort((a, b) => b[1] - a[1]).slice(0, 25));
     // Fly in close enough that the chapter and its neighbours fill the view. The camera sits on the
     // line from the graph's center through the chapter, so the chapter is centered on screen while
@@ -802,7 +811,8 @@ document.getElementById("find").addEventListener("keydown", e => {
 });
 
 // ---- Controls -----------------------------------------------------------------------
-const FMT = { density: v => (+v).toLocaleString(), nodeSize: v => (+v).toFixed(1) + "×", glow: v => Math.round(v * 100) + "%",
+document.getElementById("density").max = DENSITY_MAX;
+const FMT = { density: v => +v >= betweenLinks.length ? `all ${betweenLinks.length.toLocaleString()}` : (+v).toLocaleString(), nodeSize: v => (+v).toFixed(1) + "×", glow: v => Math.round(v * 100) + "%",
   linkBright: v => Math.round(v * 100) + "%", spin: v => +v ? (+v).toFixed(1) + " turns/min" : "off", labelSize: v => (+v).toFixed(1) + "×",
   center: v => (+v).toFixed(3), repel: v => v, linkForce: v => (+v).toFixed(2), linkDist: v => v,
   cohesion: v => Math.round(v * 100) + "%" };
@@ -860,7 +870,7 @@ document.querySelector("#legend .x").onclick = () => { setLegend(false); save();
 document.getElementById("legendOpen").onclick = () => { setLegend(true); save(); };
 document.getElementById("reheat").onclick = runLayout;
 document.getElementById("reset").onclick = () => {
-  S = { ...DEFAULTS }; save();
+  S = { ...DEFAULTS, density: DENSITY_MAX }; save();
   glowTex = makeGlowTexture(S.glow);
   syncControls(); applyForces(); select(null);
   applySavedLayout(); rebuild(); setFocus([], false); resetCamera(1200);

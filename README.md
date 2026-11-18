@@ -14,7 +14,7 @@ A 3D view of the Treasury of Scripture Knowledge (TSK) cross references from Bib
 
 Link weight = number of TSK references between the two chapters/books (either direction). A range that spans chapters counts once for each chapter.
 
-`tools/build_web.py` packs the strongest 30,000 chapter links and all book links into `site/data.js`.
+`tools/build_web.py` packs all chapter links and all book links into `site/data.js`.
 If `data/layout.json` exists (star positions + camera captured from the page), it is included and the page
 opens in exactly that arrangement instead of running the layout simulation.
 
