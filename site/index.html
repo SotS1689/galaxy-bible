@@ -434,56 +434,121 @@ function applyForces() {
 // Data changes (link count) shouldn't move stars; only force changes run the simulation.
 function runLayout() { Graph.cooldownTicks(Infinity); Graph.d3ReheatSimulation(); }
 
-// ---- Batched links (one draw call for all links) ------------------------------------
-let linkMesh = null, hiMesh = null, drawn = [];
+// ---- Link strands -------------------------------------------------------------------
+// A mesh of strands drawn in one draw call. A strand is one line between two chapters. When a
+// chapter pair is "split", each of its cross references gets its own strand: the strands bow out
+// from the straight line like seeds in a sunflower head, so they stay apart from every angle.
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+const STRAND_GAP = 0.02, MAX_BOW = 0.25;     // as a fraction of the pair's distance, at the middle
+// pairs: [sourceIndex, targetIndex, references, brightness]
+function makeStrands(pairs, split, segs) {
+  let n = 0;
+  for (const p of pairs) n += split ? p[2] : 1;
+  const st = new Int32Array(n * 2), uv = new Float32Array(n * 2), br = new Float32Array(n);
+  let i = 0;
+  for (const [s, t, w, k] of pairs) {
+    const m = split ? w : 1, R = Math.min(MAX_BOW, STRAND_GAP * Math.sqrt(m / Math.PI));
+    for (let j = 0; j < m; j++, i++) {
+      st[i * 2] = s; st[i * 2 + 1] = t; br[i] = k;
+      if (m > 1) {
+        const r = R * Math.sqrt((j + 0.5) / m), a = j * GOLDEN;
+        uv[i * 2] = r * Math.cos(a); uv[i * 2 + 1] = r * Math.sin(a);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * segs * 6), 3));
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * segs * 6), 3));
+  const mesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true,
+    depthWrite: false, blending: THREE.AdditiveBlending }));
+  mesh.frustumCulled = false;
+  mesh.userData = { st, uv, br, n, segs };
+  Graph.scene().add(mesh);
+  return mesh;
+}
+function dropStrands(mesh) { if (mesh) { Graph.scene().remove(mesh); mesh.geometry.dispose(); } return null; }
+function colorStrands(mesh, k) {
+  const { st, br, n, segs } = mesh.userData, col = mesh.geometry.attributes.color.array;
+  let o = 0;
+  for (let i = 0; i < n; i++) {
+    const a = bookColor[nodes[st[i * 2]].b], b = bookColor[nodes[st[i * 2 + 1]].b], kk = k * br[i];
+    for (let j = 0; j < segs; j++) for (let e = 0; e < 2; e++) {
+      const t = (j + e) / segs;
+      col[o++] = (a.r + (b.r - a.r) * t) * kk; col[o++] = (a.g + (b.g - a.g) * t) * kk; col[o++] = (a.b + (b.b - a.b) * t) * kk;
+    }
+  }
+  mesh.geometry.attributes.color.needsUpdate = true;
+}
+function placeStrands(mesh) {
+  const { st, uv, n, segs } = mesh.userData, p = mesh.geometry.attributes.position.array;
+  let o = 0;
+  for (let i = 0; i < n; i++) {
+    const A = nodes[st[i * 2]], B = nodes[st[i * 2 + 1]], u = uv[i * 2], v = uv[i * 2 + 1];
+    if (segs === 1 || (!u && !v)) {
+      // Straight: one segment, or a straight curve cut into equal pieces.
+      for (let j = 0; j < segs; j++) for (let e = 0; e < 2; e++) {
+        const t = (j + e) / segs;
+        p[o++] = A.x + (B.x - A.x) * t; p[o++] = A.y + (B.y - A.y) * t; p[o++] = A.z + (B.z - A.z) * t;
+      }
+      continue;
+    }
+    // Two directions across the line: e1 ⟂ the line, e2 ⟂ both. The bend point C sits off the middle.
+    const dx = B.x - A.x, dy = B.y - A.y, dz = B.z - A.z, len = Math.hypot(dx, dy, dz) || 1;
+    const fx = dx / len, fy = dy / len, fz = dz / len;
+    let ax = 0, ay = 0, az = 0;
+    if (Math.abs(fx) < 0.9) ax = 1; else ay = 1;
+    let e1x = fy * az - fz * ay, e1y = fz * ax - fx * az, e1z = fx * ay - fy * ax;
+    const l1 = Math.hypot(e1x, e1y, e1z); e1x /= l1; e1y /= l1; e1z /= l1;
+    const e2x = fy * e1z - fz * e1y, e2y = fz * e1x - fx * e1z, e2z = fx * e1y - fy * e1x;
+    const k = 2 * len;           // a quadratic curve reaches half-way to its bend point
+    const cx = (A.x + B.x) / 2 + k * (u * e1x + v * e2x);
+    const cy = (A.y + B.y) / 2 + k * (u * e1y + v * e2y);
+    const cz = (A.z + B.z) / 2 + k * (u * e1z + v * e2z);
+    for (let j = 0; j < segs; j++) for (let e = 0; e < 2; e++) {
+      const t = (j + e) / segs, a = (1 - t) * (1 - t), b = 2 * t * (1 - t), c = t * t;
+      p[o++] = a * A.x + b * cx + c * B.x; p[o++] = a * A.y + b * cy + c * B.y; p[o++] = a * A.z + b * cz + c * B.z;
+    }
+  }
+  mesh.geometry.attributes.position.needsUpdate = true;
+}
+// Brightness by number of references (gentle: square root), averaging 1 so the overall look stays the same.
+function weightBrightness(links) {
+  const r = links.map(l => Math.sqrt(l[2])), mean = r.reduce((a, b) => a + b, 0) / (r.length || 1);
+  return links.map((l, i) => [l[0], l[1], l[2], Math.min(3, Math.max(0.3, r[i] / mean))]);
+}
+
+// ---- Links --------------------------------------------------------------------------
+// The full galaxy draws the strongest N chapter pairs as one line each, brighter for more references.
+// A focus view splits every pair into one curved strand per reference, unless that's too many.
+const SPLIT_MAX = 60000, SEG_BUDGET = 480000;
+let linkMesh = null, hiMesh = null, drawn = [], linkSplit = false;
 function buildLinkMesh() {
-  if (linkMesh) { Graph.scene().remove(linkMesh); linkMesh.geometry.dispose(); }
-  // Focus mode draws every link among the chosen books; otherwise the strongest N links.
+  linkMesh = dropStrands(linkMesh);
   drawn = focus.size
     ? D.chapterLinks.filter(([s, t]) => focus.has(nodes[s].b) && focus.has(nodes[t].b) &&
         (S.withinBook || nodes[s].b !== nodes[t].b))
     : D.chapterLinks.slice(0, S.density);
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(drawn.length * 6), 3));
-  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(drawn.length * 6), 3));
-  linkMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true,
-    depthWrite: false, blending: THREE.AdditiveBlending }));
-  linkMesh.frustumCulled = false;
-  Graph.scene().add(linkMesh);
+  const refs = drawn.reduce((a, l) => a + l[2], 0);
+  linkSplit = focus.size > 0 && refs <= SPLIT_MAX;
+  linkMesh = linkSplit
+    ? makeStrands(drawn.map(([s, t, w]) => [s, t, w, 1]), true, Math.max(4, Math.min(12, Math.floor(SEG_BUDGET / refs))))
+    : makeStrands(weightBrightness(drawn), false, 1);
   colorLinks();
   updatePositions();      // the layout may be at rest, so place the new links now
 }
 // Many overlapping additive lines get bright, so scale brightness down as more are drawn.
 // Focused views have far fewer links, so they get a brightness boost.
 const linkK = () => Math.min(S.linkBright * LINK_BRIGHT_UNIT * (focus.size ? 3 : 1), 2) *
-  Math.min(1, Math.sqrt(3000 / drawn.length)) * 0.45 * (selected ? SELECT_DIM : 1);
-function colorLinks() {
-  if (!linkMesh) return;
-  const col = linkMesh.geometry.attributes.color.array;
-  const k = linkK();
-  drawn.forEach(([s, t], i) => {
-    const a = bookColor[nodes[s].b], b = bookColor[nodes[t].b];
-    col.set([a.r * k, a.g * k, a.b * k, b.r * k, b.g * k, b.b * k], i * 6);
-  });
-  linkMesh.geometry.attributes.color.needsUpdate = true;
-}
+  Math.min(1, Math.sqrt(3000 / (linkMesh ? linkMesh.userData.n : 1))) * 0.45 * (selected ? SELECT_DIM : 1);
+function colorLinks() { if (linkMesh) colorStrands(linkMesh, linkK()); }
 
+// A clicked chapter's links to its closest neighbours: one bowed strand per cross reference.
 function buildHighlight() {
-  if (hiMesh) { Graph.scene().remove(hiMesh); hiMesh.geometry.dispose(); hiMesh = null; }
+  hiMesh = dropStrands(hiMesh);
   if (!selected) return;
-  const pairs = [...highlight.keys()].map(id => [selected, nodes[id]]);
-  const g = new THREE.BufferGeometry(), col = new Float32Array(pairs.length * 6);
-  pairs.forEach(([a, b], i) => {
-    const ca = bookColor[a.b], cb = bookColor[b.b];
-    col.set([ca.r, ca.g, ca.b, cb.r, cb.g, cb.b], i * 6);
-  });
-  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pairs.length * 6), 3));
-  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
-  hiMesh = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true,
-    depthWrite: false, blending: THREE.AdditiveBlending }));
-  hiMesh.frustumCulled = false;
-  hiMesh.userData.pairs = pairs;
-  Graph.scene().add(hiMesh);
+  const pairs = [...highlight].map(([id, w]) => [selected.id, id, w, 1]);
+  hiMesh = makeStrands(pairs, true, 12);
+  colorStrands(hiMesh, 0.8);
   updatePositions();
 }
 
@@ -491,20 +556,8 @@ function updatePositions() {
   const sp = stars.geometry.attributes.position.array;
   nodes.forEach((n, i) => { sp[i * 3] = n.x; sp[i * 3 + 1] = n.y; sp[i * 3 + 2] = n.z; });
   stars.geometry.attributes.position.needsUpdate = true;
-  if (linkMesh) {
-    const p = linkMesh.geometry.attributes.position.array;
-    drawn.forEach(([s, t], i) => {
-      const a = nodes[s], b = nodes[t];
-      p[i * 6] = a.x; p[i * 6 + 1] = a.y; p[i * 6 + 2] = a.z;
-      p[i * 6 + 3] = b.x; p[i * 6 + 4] = b.y; p[i * 6 + 5] = b.z;
-    });
-    linkMesh.geometry.attributes.position.needsUpdate = true;
-  }
-  if (hiMesh) {
-    const p = hiMesh.geometry.attributes.position.array;
-    hiMesh.userData.pairs.forEach(([a, b], i) => p.set([a.x, a.y, a.z, b.x, b.y, b.z], i * 6));
-    hiMesh.geometry.attributes.position.needsUpdate = true;
-  }
+  if (linkMesh) placeStrands(linkMesh);
+  if (hiMesh) placeStrands(hiMesh);
   placeLabels();
 }
 
@@ -666,7 +719,8 @@ function showFocusInfo(el) {
   const top = drawn.slice(0, 10);       // chapterLinks is sorted strongest first
   const name = b => D.books[b][1], col = b => "#" + bookColor[b].getHexString();
   el.innerHTML = `<h2>${books.map(b => `<span style="color:${col(b)}">${name(b)}</span>`).join(" · ")}</h2>
-    <div class="sub">${drawn.length.toLocaleString()} chapter-to-chapter links shown</div>
+    <div class="sub">${drawn.length.toLocaleString()} chapter-to-chapter links shown${linkSplit
+      ? ` (${linkMesh.userData.n.toLocaleString()} cross references, one strand each)` : ""}</div>
     ${pairs.length ? `<div class="sub">Cross references between books:</div>
     <ul class="pairs">${pairs.map(([x, y, w]) => `<li><span>${name(x)} ↔ ${name(y)}</span><span>${w.toLocaleString()}</span></li>`).join("")}</ul>` : ""}
     ${top.length ? `<div class="sub">Strongest chapter links:</div>
