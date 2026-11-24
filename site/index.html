@@ -545,10 +545,62 @@ function buildLinkMesh() {
 // Many overlapping additive lines get bright, so scale brightness down as more are drawn.
 // Focused views have far fewer links, so they get a brightness boost.
 const linkK = () => Math.min(S.linkBright * LINK_BRIGHT_UNIT * (focus.size ? 3 : 1), 2) *
-  linkDim(linkMesh ? linkMesh.userData.n : 1) * 0.45 * (selected ? SELECT_DIM : 1);
+  linkDim(linkMesh ? linkMesh.userData.n : 1) * 0.45 * (selected ? SELECT_DIM : 1) *
+  (linksOffscreen() ? OFFSCREEN_BOOST : 1);
 // Past 30,000 lines, dim a little faster so the crowded middle doesn't turn white.
 const linkDim = n => Math.min(1, Math.sqrt(3000 / n)) * Math.min(1, Math.pow(30000 / n, 0.4));
 function colorLinks() { if (linkMesh) colorStrands(linkMesh, linkK()); }
+
+// ---- Fast drawing for many links ----------------------------------------------------
+// The screen is drawn with smoothing (several samples per pixel), which makes 100,000+ overlapping
+// lines about ten times slower to draw. Big link sets are drawn into a plain one-sample picture first,
+// then added onto the screen in one step. The lines are so many and so faint that the lost smoothing
+// can't be seen. Small sets (a clicked chapter, a few books) and exports keep the smooth lines.
+// Without the extra samples the faintest lines round down a little more, so they get a small boost.
+const OFFSCREEN_MIN = 10000, OFFSCREEN_BOOST = 1.35;
+const linksOffscreen = () => !!linkMesh && linkMesh.userData.n >= OFFSCREEN_MIN && !exporting;
+const linkRT = new THREE.WebGLRenderTarget(1, 1);
+const linkQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { map: { value: linkRT.texture } },
+  vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+  fragmentShader: "uniform sampler2D map; varying vec2 vUv; void main() { gl_FragColor = vec4(texture2D(map, vUv).rgb, 1.0); }",
+  transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+linkQuad.frustumCulled = false;
+linkQuad.renderOrder = -1;            // under the book labels, like the links were before
+Graph.scene().add(linkQuad);
+const LINK_LAYER = 1, linkRTSize = new THREE.Vector2(), linkClear = new THREE.Color();
+let inLinkPass = false;
+Graph.scene().onBeforeRender = (r, scene, cam, target) => {
+  if (inLinkPass) return;
+  const off = linksOffscreen();
+  linkQuad.visible = off;
+  if (!linkMesh) return;
+  linkMesh.layers.set(off ? LINK_LAYER : 0);
+  if (!off) return;
+  if (target) linkRTSize.set(target.width, target.height); else r.getDrawingBufferSize(linkRTSize);
+  if (linkRT.width !== linkRTSize.x || linkRT.height !== linkRTSize.y) linkRT.setSize(linkRTSize.x, linkRTSize.y);
+  // The flown ship still hides the links behind it: its solid parts fill in depth only.
+  const solids = [];
+  if (ship.visible) ship.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material)) if (!m.transparent) { solids.push([o, m]); m.colorWrite = false; }
+  });
+  solids.forEach(([o]) => o.layers.enable(LINK_LAYER));
+  const mask = cam.layers.mask, alpha = r.getClearAlpha();
+  r.getClearColor(linkClear);
+  inLinkPass = true;
+  try {
+    cam.layers.set(LINK_LAYER);
+    r.setRenderTarget(linkRT); r.setClearColor(0x000000, 0); r.clear();
+    r.render(scene, cam);
+  } finally {
+    inLinkPass = false;
+    cam.layers.mask = mask;
+    solids.forEach(([o, m]) => { m.colorWrite = true; o.layers.disable(LINK_LAYER); });
+    r.setClearColor(linkClear, alpha);
+    r.setRenderTarget(target || null);
+  }
+};
 
 // A clicked chapter's links to its closest neighbours: one bowed strand per cross reference.
 function buildHighlight() {
@@ -1190,6 +1242,7 @@ async function exportView(H, draw) {
   ship.visible = false; lasers.forEach(b => b.visible = false);
   starfield.material.size = oldSize * H / innerHeight;
   if (linkMesh) {
+    colorLinks();             // exports draw the smooth lines, which don't take the on-screen boost
     const col = linkMesh.geometry.attributes.color;
     for (let i = 0; i < col.array.length; i++) col.array[i] *= lineBoost;
     col.needsUpdate = true;
